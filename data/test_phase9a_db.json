@@ -1,0 +1,938 @@
+{
+  "users": [
+    [
+      "usr-customer-1",
+      {
+        "id": "usr-customer-1",
+        "name": "Aarav Sharma",
+        "email": "aarav@example.in",
+        "phone": "+919988776655",
+        "passwordHash": "$2b$10$40XRZfEVrVw6CPB8.74iROhEklFOJO6clJWVDjw7DZMggK73IZcqe",
+        "role": "customer",
+        "createdAt": "2026-08-11T18:10:33.835Z",
+        "updatedAt": "2026-08-11T18:10:33.835Z"
+      }
+    ],
+    [
+      "usr-p9a-001",
+      {
+        "id": "usr-p9a-001",
+        "name": "Karan Malhotra",
+        "email": "karan.m@opticraft.in",
+        "phone": "+919876500099",
+        "role": "customer",
+        "createdAt": "2026-08-11T18:10:33.836Z",
+        "updatedAt": "2026-08-11T18:10:33.836Z"
+      }
+    ]
+  ],
+  "addresses": [
+    [
+      "addr-1",
+      {
+        "id": "addr-1",
+        "userId": "usr-customer-1",
+        "name": "Aarav Sharma",
+        "phone": "+91 9988776655",
+        "houseFlat": "Flat 402, Green Valley Apartments",
+        "streetLocality": "100 Feet Road, Indiranagar",
+        "landmark": "Near Indiranagar Metro Station",
+        "city": "Bengaluru",
+        "state": "Karnataka",
+        "pinCode": "560038",
+        "isDefault": true
+      }
+    ],
+    [
+      "addr-p9a-101",
+      {
+        "id": "addr-p9a-101",
+        "userId": "usr-p9a-001",
+        "name": "Karan Malhotra",
+        "phone": "+919876500099",
+        "houseFlat": "Apt 12B",
+        "streetLocality": "MG Road",
+        "city": "Bengaluru",
+        "state": "Karnataka",
+        "pinCode": "560001"
+      }
+    ]
+  ],
+  "products": [
+    [
+      "prod-fern-classic-black",
+      {
+        "id": "prod-fern-classic-black",
+        "sku": "OPT-FCB-001",
+        "name": "Fern Classic Rectangle Spectacles",
+        "brand": "OptiCraft Signature",
+        "category": "Eyeglasses",
+        "description": "Precision handcrafted lightweight acetate frame with subtle metallic hinges.",
+        "price": 1499,
+        "originalPrice": 2499,
+        "discountPercentage": 40,
+        "stock": 25,
+        "active": true,
+        "isFeatured": true,
+        "images": [
+          "https://images.unsplash.com/photo-1591076482161-42ce6da69f67?auto=format&fit=crop&q=80&w=800",
+          "https://images.unsplash.com/photo-1574258495973-f010dfbb5371?auto=format&fit=crop&q=80&w=800"
+        ],
+        "frame": {
+          "shape": "Rectangle",
+          "size": "Medium",
+          "color": "Matte Obsidian Black",
+          "material": "Acetate",
+          "rimType": "Full Rim",
+          "gender": "Unisex",
+          "frameWidthMm": 138,
+          "bridgeWidthMm": 18,
+          "templeLengthMm": 145
+        },
+        "allowedLensTypeIds": [
+          "lt-plain",
+          "lt-single-vision",
+          "lt-progressive"
+        ],
+        "createdAt": "2026-08-11T18:10:33.353Z",
+        "updatedAt": "2026-08-11T18:10:33.353Z"
+      }
+    ],
+    [
+      "prod-titan-gold-round",
+      {
+        "id": "prod-titan-gold-round",
+        "sku": "OPT-TGR-002",
+        "name": "Titanium Gold Round Eyeglasses",
+        "brand": "OptiCraft Titanium Series",
+        "category": "Eyeglasses",
+        "description": "Ultralight Japanese pure titanium round frames engineered for zero pressure.",
+        "price": 3499,
+        "originalPrice": 4999,
+        "discountPercentage": 30,
+        "stock": 0,
+        "active": true,
+        "isFeatured": true,
+        "images": [
+          "https://images.unsplash.com/photo-1574258495973-f010dfbb5371?auto=format&fit=crop&q=80&w=800",
+          "https://images.unsplash.com/photo-1511499767150-a48a237f0083?auto=format&fit=crop&q=80&w=800"
+        ],
+        "frame": {
+          "shape": "Round",
+          "size": "Medium",
+          "color": "Brushed Champagne Gold",
+          "material": "Titanium",
+          "rimType": "Full Rim",
+          "gender": "Unisex",
+          "frameWidthMm": 134,
+          "bridgeWidthMm": 20,
+          "templeLengthMm": 142
+        },
+        "allowedLensTypeIds": [
+          "lt-plain",
+          "lt-single-vision",
+          "lt-progressive"
+        ],
+        "createdAt": "2026-08-11T18:10:33.353Z",
+        "updatedAt": "2026-08-11T18:10:33.353Z"
+      }
+    ],
+    [
+      "prod-screen-shield-pro",
+      {
+        "id": "prod-screen-shield-pro",
+        "sku": "OPT-SSP-003",
+        "name": "ScreenShield Pro Blue Cut Eyeglasses",
+        "brand": "OptiCraft Tech Shield",
+        "category": "Blue Cut / Screen Safe",
+        "description": "Engineered specifically for digital professionals spending 8+ hours in front of screens.",
+        "price": 1999,
+        "originalPrice": 2999,
+        "discountPercentage": 33,
+        "stock": 30,
+        "active": true,
+        "isFeatured": true,
+        "images": [
+          "https://images.unsplash.com/photo-1577803645773-f96470509666?auto=format&fit=crop&q=80&w=800"
+        ],
+        "frame": {
+          "shape": "Square",
+          "size": "Wide",
+          "color": "Transparent Gunmetal Grey",
+          "material": "TR90 Flexible",
+          "rimType": "Full Rim",
+          "gender": "Unisex",
+          "frameWidthMm": 142,
+          "bridgeWidthMm": 17,
+          "templeLengthMm": 148
+        },
+        "allowedLensTypeIds": [
+          "lt-plain",
+          "lt-single-vision"
+        ],
+        "createdAt": "2026-08-11T18:10:33.353Z",
+        "updatedAt": "2026-08-11T18:10:33.353Z"
+      }
+    ],
+    [
+      "prod-aviator-polarised-sunglasses",
+      {
+        "id": "prod-aviator-polarised-sunglasses",
+        "sku": "OPT-APS-004",
+        "name": "Heritage Gold Aviator Sunglasses",
+        "brand": "OptiCraft Sunwear",
+        "category": "Sunglasses",
+        "description": "Timeless military pilot aviator silhouette with polarized anti-glare G15 green lenses.",
+        "price": 2799,
+        "originalPrice": 3999,
+        "discountPercentage": 30,
+        "stock": 18,
+        "active": true,
+        "isFeatured": true,
+        "images": [
+          "https://images.unsplash.com/photo-1511499767150-a48a237f0083?auto=format&fit=crop&q=80&w=800"
+        ],
+        "frame": {
+          "shape": "Aviator",
+          "size": "Wide",
+          "color": "Polished Gold",
+          "material": "Stainless Steel",
+          "rimType": "Full Rim",
+          "gender": "Unisex",
+          "frameWidthMm": 144,
+          "bridgeWidthMm": 14,
+          "templeLengthMm": 140
+        },
+        "allowedLensTypeIds": [
+          "lt-plain-sunglass",
+          "lt-powered-sunglass"
+        ],
+        "createdAt": "2026-08-11T18:10:33.353Z",
+        "updatedAt": "2026-08-11T18:10:33.353Z"
+      }
+    ],
+    [
+      "prod-vista-progressive-tortoise",
+      {
+        "id": "prod-vista-progressive-tortoise",
+        "sku": "OPT-VPT-005",
+        "name": "Vista Soft Tortoise Progressive Frame",
+        "brand": "OptiCraft Executive",
+        "category": "Progressive",
+        "description": "Deep vertical frame geometry specifically tailored for optimal multi-focal progressive reading corridors.",
+        "price": 2499,
+        "originalPrice": 3499,
+        "discountPercentage": 28,
+        "stock": 15,
+        "active": true,
+        "isFeatured": false,
+        "images": [
+          "https://images.unsplash.com/photo-1591076482161-42ce6da69f67?auto=format&fit=crop&q=80&w=800"
+        ],
+        "frame": {
+          "shape": "Wayfarer",
+          "size": "Medium",
+          "color": "Warm Amber Tortoiseshell",
+          "material": "Acetate",
+          "rimType": "Full Rim",
+          "gender": "Unisex",
+          "frameWidthMm": 139,
+          "bridgeWidthMm": 19,
+          "templeLengthMm": 145
+        },
+        "allowedLensTypeIds": [
+          "lt-progressive",
+          "lt-single-vision"
+        ],
+        "createdAt": "2026-08-11T18:10:33.353Z",
+        "updatedAt": "2026-08-11T18:10:33.353Z"
+      }
+    ],
+    [
+      "prod-horizon-wayfarer-sun",
+      {
+        "id": "prod-horizon-wayfarer-sun",
+        "sku": "OPT-HWS-006",
+        "name": "Horizon Matte Black Polarised Sunwear",
+        "brand": "OptiCraft Sunwear",
+        "category": "Powered Sunglasses",
+        "description": "Sporty Wayfarer frame with flexible TR90 temples and full UV400 prescription-ready channels.",
+        "price": 2199,
+        "originalPrice": 2999,
+        "discountPercentage": 26,
+        "stock": 22,
+        "active": true,
+        "isFeatured": false,
+        "images": [
+          "https://images.unsplash.com/photo-1574258495973-f010dfbb5371?auto=format&fit=crop&q=80&w=800"
+        ],
+        "frame": {
+          "shape": "Wayfarer",
+          "size": "Medium",
+          "color": "Velvet Matte Black",
+          "material": "TR90 Flexible",
+          "rimType": "Full Rim",
+          "gender": "Unisex",
+          "frameWidthMm": 140,
+          "bridgeWidthMm": 18,
+          "templeLengthMm": 145
+        },
+        "allowedLensTypeIds": [
+          "lt-plain-sunglass",
+          "lt-powered-sunglass"
+        ],
+        "createdAt": "2026-08-11T18:10:33.353Z",
+        "updatedAt": "2026-08-11T18:10:33.353Z"
+      }
+    ]
+  ],
+  "lensTypes": [
+    [
+      "lt-plain",
+      {
+        "id": "lt-plain",
+        "name": "Plain / Zero Power Lens",
+        "description": "High-clarity optical glass with zero refractive power for fashion & style.",
+        "basePrice": 0,
+        "requiresPrescription": false,
+        "applicableCategories": [
+          "Eyeglasses",
+          "Sunglasses",
+          "Blue Cut / Screen Safe"
+        ],
+        "active": true
+      }
+    ],
+    [
+      "lt-single-vision",
+      {
+        "id": "lt-single-vision",
+        "name": "Single Vision Powered",
+        "description": "Corrects distance or near vision with uniform focal prescription across the lens.",
+        "basePrice": 499,
+        "requiresPrescription": true,
+        "applicableCategories": [
+          "Eyeglasses",
+          "Blue Cut / Screen Safe",
+          "Powered Sunglasses"
+        ],
+        "active": true
+      }
+    ],
+    [
+      "lt-progressive",
+      {
+        "id": "lt-progressive",
+        "name": "Progressive / Bifocal",
+        "description": "Seamless multi-focal lens for smooth distance, intermediate, and reading clarity.",
+        "basePrice": 1299,
+        "requiresPrescription": true,
+        "applicableCategories": [
+          "Eyeglasses",
+          "Progressive"
+        ],
+        "active": true
+      }
+    ],
+    [
+      "lt-plain-sunglass",
+      {
+        "id": "lt-plain-sunglass",
+        "name": "Tinted Plain Sunglasses",
+        "description": "100% UV-protected polarized tinted lenses without power.",
+        "basePrice": 200,
+        "requiresPrescription": false,
+        "applicableCategories": [
+          "Sunglasses"
+        ],
+        "active": true
+      }
+    ],
+    [
+      "lt-powered-sunglass",
+      {
+        "id": "lt-powered-sunglass",
+        "name": "Powered Prescription Sunglasses",
+        "description": "Custom tinted optical lenses made precisely to your eye prescription.",
+        "basePrice": 899,
+        "requiresPrescription": true,
+        "applicableCategories": [
+          "Sunglasses",
+          "Powered Sunglasses"
+        ],
+        "active": true
+      }
+    ]
+  ],
+  "lensMaterials": [
+    [
+      "mat-cr39",
+      {
+        "id": "mat-cr39",
+        "name": "CR-39 Standard Organic",
+        "description": "Classic lightweight optical resin with excellent optical clarity.",
+        "additionalPrice": 0,
+        "indexRating": "1.50",
+        "compatibilityLensTypeIds": [
+          "lt-plain",
+          "lt-single-vision",
+          "lt-plain-sunglass"
+        ],
+        "active": true
+      }
+    ],
+    [
+      "mat-polycarbonate",
+      {
+        "id": "mat-polycarbonate",
+        "name": "Polycarbonate Shatterproof",
+        "description": "10x more impact-resistant, ideal for active lifestyles, full rims, and rimless frames.",
+        "additionalPrice": 350,
+        "indexRating": "1.59",
+        "compatibilityLensTypeIds": [
+          "lt-plain",
+          "lt-single-vision",
+          "lt-progressive",
+          "lt-powered-sunglass",
+          "lt-plain-sunglass"
+        ],
+        "active": true
+      }
+    ],
+    [
+      "mat-high-index-167",
+      {
+        "id": "mat-high-index-167",
+        "name": "1.67 High-Index Ultra Thin",
+        "description": "33% thinner and lighter than standard lenses, perfect for higher powers (+/- 3.00D or more).",
+        "additionalPrice": 850,
+        "indexRating": "1.67",
+        "compatibilityLensTypeIds": [
+          "lt-single-vision",
+          "lt-progressive",
+          "lt-powered-sunglass"
+        ],
+        "active": true
+      }
+    ],
+    [
+      "mat-high-index-174",
+      {
+        "id": "mat-high-index-174",
+        "name": "1.74 Featherweight High-Index",
+        "description": "Ultra-sleek profile designed for high prescriptions to prevent glass edge projection.",
+        "additionalPrice": 1499,
+        "indexRating": "1.74",
+        "compatibilityLensTypeIds": [
+          "lt-single-vision",
+          "lt-progressive"
+        ],
+        "active": true
+      }
+    ]
+  ],
+  "coatings": [
+    [
+      "coat-hard",
+      {
+        "id": "coat-hard",
+        "name": "Hard Scratch-Resistant Coat",
+        "description": "Protective clear shell to safeguard lenses against everyday scratches.",
+        "additionalPrice": 0,
+        "compatibilityMaterialIds": [
+          "mat-cr39",
+          "mat-polycarbonate",
+          "mat-high-index-167",
+          "mat-high-index-174"
+        ],
+        "active": true
+      }
+    ],
+    [
+      "coat-arc",
+      {
+        "id": "coat-arc",
+        "name": "Anti-Reflection (ARC)",
+        "description": "Eliminates glare from headlights, screen lights, and indoor illumination.",
+        "additionalPrice": 299,
+        "compatibilityMaterialIds": [
+          "mat-cr39",
+          "mat-polycarbonate",
+          "mat-high-index-167",
+          "mat-high-index-174"
+        ],
+        "active": true
+      }
+    ],
+    [
+      "coat-bluecut",
+      {
+        "id": "coat-bluecut",
+        "name": "Blue Cut / Screen Safe",
+        "description": "Filters selected portions of harmful high-energy blue-violet light from digital screens.",
+        "additionalPrice": 499,
+        "isBlueCut": true,
+        "compatibilityMaterialIds": [
+          "mat-cr39",
+          "mat-polycarbonate",
+          "mat-high-index-167",
+          "mat-high-index-174"
+        ],
+        "active": true
+      }
+    ],
+    [
+      "coat-superhydrophobic",
+      {
+        "id": "coat-superhydrophobic",
+        "name": "Superhydrophobic Water Repellent",
+        "description": "Repels dust, water droplets, fingerprint smudges, and oil for easy cleaning.",
+        "additionalPrice": 399,
+        "compatibilityMaterialIds": [
+          "mat-polycarbonate",
+          "mat-high-index-167",
+          "mat-high-index-174"
+        ],
+        "active": true
+      }
+    ],
+    [
+      "coat-uv400",
+      {
+        "id": "coat-uv400",
+        "name": "UV400 Solar Defense",
+        "description": "Blocks 100% of UVA and UVB solar rays.",
+        "additionalPrice": 250,
+        "compatibilityMaterialIds": [
+          "mat-cr39",
+          "mat-polycarbonate",
+          "mat-high-index-167",
+          "mat-high-index-174"
+        ],
+        "active": true
+      }
+    ]
+  ],
+  "prescriptions": [
+    [
+      "rx-1",
+      {
+        "id": "rx-1",
+        "userId": "usr-customer-1",
+        "title": "My Daily Glasses Rx",
+        "odRight": {
+          "sph": -1.5,
+          "cyl": -0.5,
+          "axis": 90
+        },
+        "osLeft": {
+          "sph": -1.25,
+          "cyl": -0.25,
+          "axis": 85
+        },
+        "pd": 63,
+        "verificationStatus": "Verified",
+        "createdAt": "2026-08-11T18:10:33.835Z",
+        "updatedAt": "2026-08-11T18:10:33.835Z"
+      }
+    ],
+    [
+      "rx-p9a-201",
+      {
+        "id": "rx-p9a-201",
+        "userId": "usr-p9a-001",
+        "title": "Karan Specs Rx",
+        "odRight": {
+          "sph": -2,
+          "cyl": -0.5,
+          "axis": 180
+        },
+        "osLeft": {
+          "sph": -1.75,
+          "cyl": -0.25,
+          "axis": 175
+        },
+        "pd": 64,
+        "verificationStatus": "Verified",
+        "createdAt": "2026-08-11T18:10:33.836Z",
+        "updatedAt": "2026-08-11T18:10:33.836Z"
+      }
+    ]
+  ],
+  "carts": [],
+  "orders": [
+    [
+      "ord-p9a-301",
+      {
+        "id": "ord-p9a-301",
+        "orderNumber": "ORD-2026-P9A",
+        "userId": "usr-p9a-001",
+        "customerName": "Karan Malhotra",
+        "customerEmail": "karan.m@opticraft.in",
+        "customerPhone": "+919876500099",
+        "deliveryAddress": {
+          "id": "addr-p9a-101",
+          "userId": "usr-p9a-001",
+          "name": "Karan Malhotra",
+          "phone": "+919876500099",
+          "houseFlat": "Apt 12B",
+          "streetLocality": "MG Road",
+          "city": "Bengaluru",
+          "state": "Karnataka",
+          "pinCode": "560001"
+        },
+        "items": [],
+        "subtotalAmount": 1499,
+        "discountAmount": 0,
+        "deliveryFee": 0,
+        "totalAmount": 1499,
+        "status": "Confirmed",
+        "prescriptionVerificationStatus": "Verified",
+        "payment": {
+          "id": "pay-p9a-301",
+          "razorpayOrderId": "order_p9a_rzp_123",
+          "razorpayPaymentId": "pay_p9a_rzp_456",
+          "amount": 1499,
+          "currency": "INR",
+          "paymentMethod": "UPI",
+          "status": "Captured",
+          "createdAt": "2026-08-11T18:10:33.837Z"
+        },
+        "createdAt": "2026-08-11T18:10:33.837Z",
+        "updatedAt": "2026-08-11T18:10:33.837Z"
+      }
+    ],
+    [
+      "ord-idemp-1786471833840",
+      {
+        "id": "ord-idemp-1786471833840",
+        "orderNumber": "ORD-IDEMP-001",
+        "customerName": "Test Customer",
+        "customerEmail": "test@opticraft.in",
+        "customerPhone": "+919900011122",
+        "deliveryAddress": {
+          "id": "addr-p9a-101",
+          "userId": "usr-p9a-001",
+          "name": "Karan Malhotra",
+          "phone": "+919876500099",
+          "houseFlat": "Apt 12B",
+          "streetLocality": "MG Road",
+          "city": "Bengaluru",
+          "state": "Karnataka",
+          "pinCode": "560001"
+        },
+        "items": [],
+        "subtotalAmount": 1999,
+        "discountAmount": 0,
+        "deliveryFee": 0,
+        "totalAmount": 1999,
+        "status": "Confirmed",
+        "prescriptionVerificationStatus": "Not Required",
+        "payment": {
+          "id": "pay-idemp-1",
+          "razorpayOrderId": "order_idemp_1001",
+          "razorpayPaymentId": "pay_idemp_2002",
+          "amount": 1999,
+          "currency": "INR",
+          "paymentMethod": "UPI",
+          "status": "Captured",
+          "createdAt": "2026-08-11T18:10:33.840Z"
+        },
+        "createdAt": "2026-08-11T18:10:33.840Z",
+        "updatedAt": "2026-08-11T18:10:33.840Z"
+      }
+    ]
+  ],
+  "wishlists": [],
+  "inventory": [
+    [
+      "prod-fern-classic-black",
+      {
+        "productId": "prod-fern-classic-black",
+        "sku": "OPT-FCB-001",
+        "stockCount": 25,
+        "reservedCount": 0,
+        "availableCount": 25,
+        "lowStockThreshold": 5,
+        "status": "In Stock",
+        "lastUpdated": "2026-08-11T18:10:33.353Z"
+      }
+    ],
+    [
+      "prod-titan-gold-round",
+      {
+        "productId": "prod-titan-gold-round",
+        "sku": "OPT-TGR-002",
+        "stockCount": 10,
+        "reservedCount": 0,
+        "availableCount": 0,
+        "lowStockThreshold": 5,
+        "status": "Out of Stock",
+        "lastUpdated": "2026-08-11T18:10:33.839Z"
+      }
+    ],
+    [
+      "prod-screen-shield-pro",
+      {
+        "productId": "prod-screen-shield-pro",
+        "sku": "OPT-SSP-003",
+        "stockCount": 30,
+        "reservedCount": 0,
+        "availableCount": 30,
+        "lowStockThreshold": 5,
+        "status": "In Stock",
+        "lastUpdated": "2026-08-11T18:10:33.353Z"
+      }
+    ],
+    [
+      "prod-aviator-polarised-sunglasses",
+      {
+        "productId": "prod-aviator-polarised-sunglasses",
+        "sku": "OPT-APS-004",
+        "stockCount": 18,
+        "reservedCount": 0,
+        "availableCount": 18,
+        "lowStockThreshold": 5,
+        "status": "In Stock",
+        "lastUpdated": "2026-08-11T18:10:33.353Z"
+      }
+    ],
+    [
+      "prod-vista-progressive-tortoise",
+      {
+        "productId": "prod-vista-progressive-tortoise",
+        "sku": "OPT-VPT-005",
+        "stockCount": 15,
+        "reservedCount": 0,
+        "availableCount": 15,
+        "lowStockThreshold": 5,
+        "status": "In Stock",
+        "lastUpdated": "2026-08-11T18:10:33.354Z"
+      }
+    ],
+    [
+      "prod-horizon-wayfarer-sun",
+      {
+        "productId": "prod-horizon-wayfarer-sun",
+        "sku": "OPT-HWS-006",
+        "stockCount": 22,
+        "reservedCount": 0,
+        "availableCount": 22,
+        "lowStockThreshold": 5,
+        "status": "In Stock",
+        "lastUpdated": "2026-08-11T18:10:33.354Z"
+      }
+    ]
+  ],
+  "adminUsers": [
+    [
+      "adm-super-1",
+      {
+        "id": "adm-super-1",
+        "name": "Super Admin (System)",
+        "email": "superadmin@opticraft.in",
+        "role": "SUPER_ADMIN",
+        "passwordHash": "$2b$10$LVeq1viw2tNsMCkOCs4H3.MmSBshM9ZjDl5nUbM0zq5pQcRcZoLSS",
+        "createdAt": "2026-08-11T18:10:33.835Z",
+        "updatedAt": "2026-08-11T18:10:33.835Z"
+      }
+    ],
+    [
+      "adm-general-1",
+      {
+        "id": "adm-general-1",
+        "name": "Priya Verma (Store Admin)",
+        "email": "admin@opticraft.in",
+        "role": "ADMIN",
+        "passwordHash": "$2b$10$Yh5SeLk65s7ySwP/mtPSYOqa/coQejXCJdJll5X9CfAVXFKnbsl1e",
+        "createdAt": "2026-08-11T18:10:33.835Z",
+        "updatedAt": "2026-08-11T18:10:33.835Z"
+      }
+    ],
+    [
+      "adm-ops-1",
+      {
+        "id": "adm-ops-1",
+        "name": "Vikram Singh (Operations)",
+        "email": "ops@opticraft.in",
+        "role": "OPERATIONS",
+        "passwordHash": "$2b$10$gzlu4winE0QsCGI9ZoOuR.eIUqIIOdo1oHkW76PA/10WxhFqS/UQO",
+        "createdAt": "2026-08-11T18:10:33.835Z",
+        "updatedAt": "2026-08-11T18:10:33.835Z"
+      }
+    ],
+    [
+      "adm-catalog-1",
+      {
+        "id": "adm-catalog-1",
+        "name": "Neha Kapoor (Catalog Manager)",
+        "email": "catalog@opticraft.in",
+        "role": "CATALOG_MANAGER",
+        "passwordHash": "$2b$10$MVOxN1wMI.ChENknWl6uL.MssajiZ2bCM.tODungyVKpDQQ2Dspb6",
+        "createdAt": "2026-08-11T18:10:33.835Z",
+        "updatedAt": "2026-08-11T18:10:33.835Z"
+      }
+    ]
+  ],
+  "orderNotes": [],
+  "shipments": [
+    [
+      "ord-p9a-301",
+      {
+        "id": "ship-p9a-401",
+        "orderId": "ord-p9a-301",
+        "courierName": "BlueDart Express",
+        "awbNumber": "AWB9988776655",
+        "status": "In Transit",
+        "shippedAt": "2026-08-11T18:10:33.837Z",
+        "updatedAt": "2026-08-11T18:10:33.837Z"
+      }
+    ]
+  ],
+  "inventoryLedger": [
+    [
+      "prod-fern-classic-black",
+      [
+        {
+          "id": "tx-init-prod-fern-classic-black",
+          "productId": "prod-fern-classic-black",
+          "sku": "OPT-FCB-001",
+          "quantityChange": 25,
+          "type": "Addition",
+          "reason": "Initial Warehouse Inventory Seeding",
+          "performedBy": "System Automation",
+          "timestamp": "2026-08-11T18:10:33.353Z"
+        }
+      ]
+    ],
+    [
+      "prod-titan-gold-round",
+      [
+        {
+          "id": "tx-init-prod-titan-gold-round",
+          "productId": "prod-titan-gold-round",
+          "sku": "OPT-TGR-002",
+          "quantityChange": 12,
+          "type": "Addition",
+          "reason": "Initial Warehouse Inventory Seeding",
+          "performedBy": "System Automation",
+          "timestamp": "2026-08-11T18:10:33.353Z"
+        },
+        {
+          "id": "tx-1786471833839-361",
+          "productId": "prod-titan-gold-round",
+          "sku": "OPT-TGR-002",
+          "quantityChange": -1,
+          "type": "Sale",
+          "reason": "Order Sale Fulfillment #ORD-CONCUR-001",
+          "performedBy": "System QA",
+          "timestamp": "2026-08-11T18:10:33.839Z"
+        },
+        {
+          "id": "tx-1786471833839-850",
+          "productId": "prod-titan-gold-round",
+          "sku": "OPT-TGR-002",
+          "quantityChange": -1,
+          "type": "Sale",
+          "reason": "Order Sale Fulfillment #RACE-1",
+          "performedBy": "User A",
+          "timestamp": "2026-08-11T18:10:33.839Z"
+        }
+      ]
+    ],
+    [
+      "prod-screen-shield-pro",
+      [
+        {
+          "id": "tx-init-prod-screen-shield-pro",
+          "productId": "prod-screen-shield-pro",
+          "sku": "OPT-SSP-003",
+          "quantityChange": 30,
+          "type": "Addition",
+          "reason": "Initial Warehouse Inventory Seeding",
+          "performedBy": "System Automation",
+          "timestamp": "2026-08-11T18:10:33.353Z"
+        }
+      ]
+    ],
+    [
+      "prod-aviator-polarised-sunglasses",
+      [
+        {
+          "id": "tx-init-prod-aviator-polarised-sunglasses",
+          "productId": "prod-aviator-polarised-sunglasses",
+          "sku": "OPT-APS-004",
+          "quantityChange": 18,
+          "type": "Addition",
+          "reason": "Initial Warehouse Inventory Seeding",
+          "performedBy": "System Automation",
+          "timestamp": "2026-08-11T18:10:33.353Z"
+        }
+      ]
+    ],
+    [
+      "prod-vista-progressive-tortoise",
+      [
+        {
+          "id": "tx-init-prod-vista-progressive-tortoise",
+          "productId": "prod-vista-progressive-tortoise",
+          "sku": "OPT-VPT-005",
+          "quantityChange": 15,
+          "type": "Addition",
+          "reason": "Initial Warehouse Inventory Seeding",
+          "performedBy": "System Automation",
+          "timestamp": "2026-08-11T18:10:33.354Z"
+        }
+      ]
+    ],
+    [
+      "prod-horizon-wayfarer-sun",
+      [
+        {
+          "id": "tx-init-prod-horizon-wayfarer-sun",
+          "productId": "prod-horizon-wayfarer-sun",
+          "sku": "OPT-HWS-006",
+          "quantityChange": 22,
+          "type": "Addition",
+          "reason": "Initial Warehouse Inventory Seeding",
+          "performedBy": "System Automation",
+          "timestamp": "2026-08-11T18:10:33.354Z"
+        }
+      ]
+    ]
+  ],
+  "auditLogs": [
+    [
+      "log-p9a-501",
+      {
+        "id": "log-p9a-501",
+        "adminId": "adm-super-1",
+        "adminName": "Super Admin",
+        "adminRole": "SUPER_ADMIN",
+        "action": "TEST_PERSISTENCE",
+        "entity": "Order",
+        "entityId": "ord-p9a-301",
+        "timestamp": "2026-08-11T18:10:33.837Z"
+      }
+    ]
+  ],
+  "cancellations": [],
+  "returnRequests": [],
+  "payments": [
+    [
+      "pay-1786471833840",
+      {
+        "id": "pay-1786471833840",
+        "razorpayOrderId": "order_idemp_1001",
+        "razorpayPaymentId": "pay_idemp_2002",
+        "amount": 1999,
+        "currency": "INR",
+        "paymentMethod": "UPI",
+        "status": "Captured",
+        "createdAt": "2026-08-11T18:10:33.840Z"
+      }
+    ]
+  ],
+  "notifications": [],
+  "prescriptionFiles": []
+}

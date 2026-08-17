@@ -1,0 +1,6 @@
+{
+  "name": "OptiCraft Eyewear",
+  "description": "Premium Indian E-Commerce Eyewear Platform with Lens Customization & Prescription Engine",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
