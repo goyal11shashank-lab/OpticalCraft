@@ -9,6 +9,7 @@ import fs from 'fs';
 import path from 'path';
 import bcrypt from 'bcryptjs';
 import pg from 'pg';
+import { getConnectionString } from '@netlify/database';
 import {
   User,
   Address,
@@ -33,6 +34,60 @@ import {
   PrescriptionFileMetadata,
   OrderStatus,
 } from '../types.js';
+
+export type DatabaseProviderSource = 'NETLIFY_DATABASE' | 'NETLIFY_DB_URL' | 'DATABASE_URL' | 'NONE';
+
+export interface ResolvedDatabaseConnection {
+  connectionString?: string;
+  source: DatabaseProviderSource;
+  providerName: string;
+}
+
+/**
+ * Resolves PostgreSQL connection configuration following production priority:
+ * 1. Official @netlify/database getConnectionString() helper (primary for Netlify managed DB)
+ * 2. NETLIFY_DB_URL environment variable provided by Netlify platform
+ * 3. DATABASE_URL environment variable for non-Netlify / local development
+ */
+export function resolvePostgresConnectionString(): ResolvedDatabaseConnection {
+  // 1. Official @netlify/database getConnectionString() helper
+  try {
+    const netlifyUrl = getConnectionString();
+    if (netlifyUrl && typeof netlifyUrl === 'string' && netlifyUrl.trim()) {
+      return {
+        connectionString: netlifyUrl.trim(),
+        source: 'NETLIFY_DATABASE',
+        providerName: 'Netlify Database (@netlify/database)',
+      };
+    }
+  } catch {
+    // getConnectionString() throws if NETLIFY_DB_URL / runtime context is not set
+  }
+
+  // 2. Direct NETLIFY_DB_URL environment variable if set by Netlify
+  if (process.env.NETLIFY_DB_URL && process.env.NETLIFY_DB_URL.trim()) {
+    return {
+      connectionString: process.env.NETLIFY_DB_URL.trim(),
+      source: 'NETLIFY_DB_URL',
+      providerName: 'Netlify Database (NETLIFY_DB_URL)',
+    };
+  }
+
+  // 3. DATABASE_URL for local / external development
+  if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim()) {
+    return {
+      connectionString: process.env.DATABASE_URL.trim(),
+      source: 'DATABASE_URL',
+      providerName: 'PostgreSQL (DATABASE_URL)',
+    };
+  }
+
+  return {
+    connectionString: undefined,
+    source: 'NONE',
+    providerName: 'None',
+  };
+}
 
 // Embedded fallback schema in case file-based asset is not bundled in serverless output
 const EMBEDDED_SCHEMA_SQL = `
@@ -477,11 +532,17 @@ export class DatabaseStore {
     isProduction: boolean;
     mode: 'POSTGRESQL' | 'DEVELOPMENT_FILE_FALLBACK' | 'PRODUCTION_DB_UNAVAILABLE';
     postgresConnected: boolean;
+    provider?: string;
+    source?: DatabaseProviderSource;
+    databaseName?: string;
+    databaseUser?: string;
+    databaseSchema?: string;
     maskedUrl?: string;
     error?: string;
   }> {
     const isProd = process.env.NODE_ENV === 'production' || !!process.env.NETLIFY;
-    const maskedUrl = this.maskDbUrl(process.env.DATABASE_URL);
+    const { connectionString, source, providerName } = resolvePostgresConnectionString();
+    const maskedUrl = this.maskDbUrl(connectionString);
 
     if (!this.pool || !this.isPostgresConnected) {
       // Attempt connection initialization
@@ -492,12 +553,18 @@ export class DatabaseStore {
       try {
         const client = await this.pool.connect();
         try {
-          await client.query('SELECT 1');
+          const res = await client.query('SELECT current_database(), current_user, current_schema()');
+          const row = res.rows[0] || {};
           return {
             healthy: true,
             isProduction: isProd,
             mode: 'POSTGRESQL',
             postgresConnected: true,
+            provider: providerName,
+            source,
+            databaseName: row.current_database,
+            databaseUser: row.current_user,
+            databaseSchema: row.current_schema,
             maskedUrl,
           };
         } finally {
@@ -515,8 +582,10 @@ export class DatabaseStore {
         isProduction: true,
         mode: 'PRODUCTION_DB_UNAVAILABLE',
         postgresConnected: false,
+        provider: providerName,
+        source,
         maskedUrl,
-        error: this.postgresError || 'Production DATABASE_URL is not configured or PostgreSQL connection failed.',
+        error: this.postgresError || 'Production Netlify Database is not configured or PostgreSQL connection failed.',
       };
     } else {
       return {
@@ -524,6 +593,8 @@ export class DatabaseStore {
         isProduction: false,
         mode: 'DEVELOPMENT_FILE_FALLBACK',
         postgresConnected: false,
+        provider: providerName,
+        source,
         maskedUrl,
         error: this.postgresError || undefined,
       };
@@ -532,7 +603,8 @@ export class DatabaseStore {
 
   public getHealthStatus() {
     const isProd = process.env.NODE_ENV === 'production' || !!process.env.NETLIFY;
-    const maskedUrl = this.maskDbUrl(process.env.DATABASE_URL);
+    const { connectionString, source, providerName } = resolvePostgresConnectionString();
+    const maskedUrl = this.maskDbUrl(connectionString);
 
     if (isProd) {
       if (this.isPostgresConnected) {
@@ -541,6 +613,8 @@ export class DatabaseStore {
           isProduction: true,
           mode: 'POSTGRESQL' as const,
           postgresConnected: true,
+          provider: providerName,
+          source,
           maskedUrl,
         };
       } else {
@@ -549,8 +623,10 @@ export class DatabaseStore {
           isProduction: true,
           mode: 'PRODUCTION_DB_UNAVAILABLE' as const,
           postgresConnected: false,
+          provider: providerName,
+          source,
           maskedUrl,
-          error: this.postgresError || 'Production DATABASE_URL is not configured.',
+          error: this.postgresError || 'Production Netlify Database is not configured.',
         };
       }
     } else {
@@ -559,6 +635,8 @@ export class DatabaseStore {
         isProduction: false,
         mode: (this.isPostgresConnected ? 'POSTGRESQL' : 'DEVELOPMENT_FILE_FALLBACK') as 'POSTGRESQL' | 'DEVELOPMENT_FILE_FALLBACK',
         postgresConnected: this.isPostgresConnected,
+        provider: providerName,
+        source,
         maskedUrl,
         error: this.postgresError || undefined,
       };
@@ -674,19 +752,19 @@ export class DatabaseStore {
   }
 
   public async initializePostgresIfConfigured(): Promise<boolean> {
-    const dbUrl = process.env.DATABASE_URL;
+    const { connectionString: dbUrl, source, providerName } = resolvePostgresConnectionString();
     const isProd = process.env.NODE_ENV === 'production' || !!process.env.NETLIFY;
 
     if (!dbUrl) {
       if (isProd) {
         this.isPostgresConnected = false;
-        this.postgresError = 'Production DATABASE_URL environment variable is not configured.';
-        console.error('[DATA PERSISTENCE] PRODUCTION DATABASE FAILURE: Production DATABASE_URL is not configured.');
+        this.postgresError = 'Production Netlify Database is not configured (NETLIFY_DB_URL not found).';
+        console.error('[DATA PERSISTENCE] PRODUCTION DATABASE FAILURE: Production Netlify Database is not configured.');
         return false;
       } else {
         this.isPostgresConnected = false;
         this.postgresError = null;
-        console.log('[DATA PERSISTENCE] DEVELOPMENT FALLBACK: DATABASE_URL not set. Using development file-backed store.');
+        console.log('[DATA PERSISTENCE] DEVELOPMENT FALLBACK: No database connection configured. Using development file-backed store.');
         return false;
       }
     }
@@ -733,12 +811,12 @@ export class DatabaseStore {
         if (prodCount > 0) {
           // Existing database! Hydrate in-memory state from PostgreSQL rows
           await this.loadDataFromPostgres(client);
-          console.log(`[DATA PERSISTENCE] Hydrated data from existing PostgreSQL database (${prodCount} products found).`);
+          console.log(`[DATA PERSISTENCE] Hydrated data from existing Netlify Database (${prodCount} products found, source: ${source}).`);
         } else {
           // Fresh database: seed initial catalog data and persist to PostgreSQL
           this.seedInitialData();
           await this.persistInitialDataToPostgres(client);
-          console.log('[DATA PERSISTENCE] Seeded fresh PostgreSQL database with initial catalog records.');
+          console.log(`[DATA PERSISTENCE] Seeded fresh Netlify Database with initial catalog records (source: ${source}).`);
         }
       } finally {
         client.release();
@@ -746,16 +824,16 @@ export class DatabaseStore {
 
       this.isPostgresConnected = true;
       this.postgresError = null;
-      console.log(`[DATA PERSISTENCE] PostgreSQL connected successfully (${this.maskDbUrl(dbUrl)}).`);
+      console.log(`[DATA PERSISTENCE] Netlify Database connected successfully via ${providerName} (${this.maskDbUrl(dbUrl)}).`);
       return true;
     } catch (err: any) {
       this.isPostgresConnected = false;
       this.postgresError = err.message || String(err);
 
       if (isProd) {
-        console.error(`[DATA PERSISTENCE] PRODUCTION DATABASE FAILURE: PostgreSQL connection failed (${err.message || err}).`);
+        console.error(`[DATA PERSISTENCE] PRODUCTION DATABASE FAILURE: ${providerName} connection failed (${err.message || err}).`);
       } else {
-        console.log(`[DATA PERSISTENCE] DEVELOPMENT FALLBACK: PostgreSQL connection failed (${err.message || err}). Using development file-backed store.`);
+        console.log(`[DATA PERSISTENCE] DEVELOPMENT FALLBACK: Database connection failed (${err.message || err}). Using development file-backed store.`);
       }
       return false;
     }
@@ -1248,8 +1326,17 @@ export class DatabaseStore {
 
   public async reconnectPostgres(dbUrl?: string): Promise<boolean> {
     if (dbUrl !== undefined) {
+      process.env.NETLIFY_DB_URL = dbUrl;
       process.env.DATABASE_URL = dbUrl;
     }
+    if (globalPostgresPool) {
+      try {
+        await globalPostgresPool.end();
+      } catch {}
+      globalPostgresPool = null;
+    }
+    this.pool = null;
+    this.initializationPromise = null;
     return this.initializePostgresIfConfigured();
   }
 
