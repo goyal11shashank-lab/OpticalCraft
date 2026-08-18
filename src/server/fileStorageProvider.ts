@@ -31,13 +31,20 @@ export class LocalFileStorageProvider {
   ]);
 
   constructor(customDir?: string) {
-    this.storageDir = customDir || path.join(process.cwd(), 'data', 'private_uploads', 'prescriptions');
-    this.ensureStorageDir();
+    const isProd = process.env.NODE_ENV === 'production' || !!process.env.NETLIFY;
+    this.storageDir = customDir || (isProd ? path.join('/tmp', 'private_uploads', 'prescriptions') : path.join(process.cwd(), 'data', 'private_uploads', 'prescriptions'));
+    if (!isProd) {
+      this.ensureStorageDir();
+    }
   }
 
   private ensureStorageDir() {
-    if (!fs.existsSync(this.storageDir)) {
-      fs.mkdirSync(this.storageDir, { recursive: true });
+    try {
+      if (!fs.existsSync(this.storageDir)) {
+        fs.mkdirSync(this.storageDir, { recursive: true });
+      }
+    } catch (err) {
+      console.warn('[STORAGE] Could not ensure directory:', err);
     }
   }
 

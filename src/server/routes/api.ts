@@ -120,29 +120,40 @@ router.get('/health', async (_req: Request, res: Response) => {
   const health = await db.checkDatabaseLiveConnection();
   const isProd = process.env.NODE_ENV === 'production' || !!process.env.NETLIFY;
 
-  if (health.healthy) {
+  if (health.healthy && (!isProd || health.postgresConnected)) {
     res.status(200).json({
       status: 'ok',
       database: health.postgresConnected ? 'connected' : 'development_fallback',
+      provider: isProd ? 'netlify' : health.provider || 'netlify',
       environment: isProd ? 'production' : 'development',
       service: 'OptiCraft Eyewear API',
       timestamp: new Date().toISOString(),
-      health,
     });
   } else {
     res.status(503).json({
       status: 'error',
       database: 'disconnected',
+      provider: isProd ? 'netlify' : health.provider || 'none',
       environment: isProd ? 'production' : 'development',
       service: 'OptiCraft Eyewear API',
       timestamp: new Date().toISOString(),
-      error: health.error || 'PostgreSQL database connection failed',
-      health,
+      error: health.error || 'PostgreSQL database connection failed. Production requires active Netlify Database connection.',
     });
   }
 });
 
-router.get('/database/tables', async (_req: Request, res: Response) => {
+// Protected table inspection diagnostic endpoint (Admin or Development only)
+router.get('/database/tables', async (req: AuthenticatedRequest, res: Response) => {
+  const isProd = process.env.NODE_ENV === 'production' || !!process.env.NETLIFY;
+  
+  // Require Admin role in production to safeguard schema diagnostics
+  if (isProd && (!req.user || req.user.role !== 'admin')) {
+    return res.status(401).json({
+      success: false,
+      error: 'Unauthorized: Admin authentication required to inspect database tables in production.',
+    });
+  }
+
   try {
     const health = await db.checkDatabaseLiveConnection();
     res.status(200).json({

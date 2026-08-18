@@ -12,6 +12,8 @@ export interface ResolvedDatabaseConnection {
 }
 
 export function resolvePostgresConnectionString(): ResolvedDatabaseConnection {
+  const isProd = process.env.NODE_ENV === 'production' || !!process.env.NETLIFY;
+
   // 1. Official @netlify/database getConnectionString() helper
   try {
     const netlifyUrl = getConnectionString();
@@ -19,7 +21,7 @@ export function resolvePostgresConnectionString(): ResolvedDatabaseConnection {
       return {
         connectionString: netlifyUrl.trim(),
         source: 'NETLIFY_DATABASE',
-        providerName: 'Netlify Database (@netlify/database)',
+        providerName: 'netlify',
       };
     }
   } catch {
@@ -31,23 +33,23 @@ export function resolvePostgresConnectionString(): ResolvedDatabaseConnection {
     return {
       connectionString: process.env.NETLIFY_DB_URL.trim(),
       source: 'NETLIFY_DB_URL',
-      providerName: 'Netlify Database (NETLIFY_DB_URL)',
+      providerName: 'netlify',
     };
   }
 
-  // 3. Optional local DATABASE_URL fallback for development
-  if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim()) {
+  // 3. Optional local DATABASE_URL fallback for local development ONLY
+  if (!isProd && process.env.DATABASE_URL && process.env.DATABASE_URL.trim()) {
     return {
       connectionString: process.env.DATABASE_URL.trim(),
       source: 'DATABASE_URL',
-      providerName: 'PostgreSQL (DATABASE_URL)',
+      providerName: 'local_development_postgres',
     };
   }
 
   return {
     connectionString: undefined,
     source: 'NONE',
-    providerName: 'None',
+    providerName: 'none',
   };
 }
 

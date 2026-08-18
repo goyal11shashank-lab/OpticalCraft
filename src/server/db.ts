@@ -47,9 +47,11 @@ export interface ResolvedDatabaseConnection {
  * Resolves PostgreSQL connection configuration following production priority:
  * 1. Official @netlify/database getConnectionString() helper (primary for Netlify managed DB)
  * 2. NETLIFY_DB_URL environment variable provided by Netlify platform
- * 3. DATABASE_URL environment variable for non-Netlify / local development
+ * 3. DATABASE_URL environment variable for non-production local development ONLY
  */
 export function resolvePostgresConnectionString(): ResolvedDatabaseConnection {
+  const isProd = process.env.NODE_ENV === 'production' || !!process.env.NETLIFY;
+
   // 1. Official @netlify/database getConnectionString() helper
   try {
     const netlifyUrl = getConnectionString();
@@ -57,7 +59,7 @@ export function resolvePostgresConnectionString(): ResolvedDatabaseConnection {
       return {
         connectionString: netlifyUrl.trim(),
         source: 'NETLIFY_DATABASE',
-        providerName: 'Netlify Database (@netlify/database)',
+        providerName: 'netlify',
       };
     }
   } catch {
@@ -69,23 +71,23 @@ export function resolvePostgresConnectionString(): ResolvedDatabaseConnection {
     return {
       connectionString: process.env.NETLIFY_DB_URL.trim(),
       source: 'NETLIFY_DB_URL',
-      providerName: 'Netlify Database (NETLIFY_DB_URL)',
+      providerName: 'netlify',
     };
   }
 
-  // 3. DATABASE_URL for local / external development
-  if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim()) {
+  // 3. DATABASE_URL ONLY for local development (strictly forbidden in production)
+  if (!isProd && process.env.DATABASE_URL && process.env.DATABASE_URL.trim()) {
     return {
       connectionString: process.env.DATABASE_URL.trim(),
       source: 'DATABASE_URL',
-      providerName: 'PostgreSQL (DATABASE_URL)',
+      providerName: 'local_development_postgres',
     };
   }
 
   return {
     connectionString: undefined,
     source: 'NONE',
-    providerName: 'None',
+    providerName: 'none',
   };
 }
 
@@ -499,7 +501,7 @@ export class DatabaseStore {
     this.notifications = new PersistentMap(makeMutateHook('notification_records', 'id'), isMutationAllowed);
     this.prescriptionFiles = new PersistentMap(makeMutateHook('prescription_file_metadata', 'id'), isMutationAllowed);
 
-    // Initial development store preload
+    // Initial development store preload ONLY in development mode
     const isProd = process.env.NODE_ENV === 'production' || !!process.env.NETLIFY;
     if (!isProd) {
       this.initializeStore();
@@ -708,7 +710,9 @@ export class DatabaseStore {
   }
 
   private initializeStore() {
-    this.ensureDataDir();
+    const isProd = process.env.NODE_ENV === 'production' || !!process.env.NETLIFY;
+    if (isProd) return;
+
     if (fs.existsSync(this.dbFilePath)) {
       try {
         this.loadFromDisk();
@@ -724,13 +728,23 @@ export class DatabaseStore {
   }
 
   private ensureDataDir() {
-    const dir = path.dirname(this.dbFilePath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+    const isProd = process.env.NODE_ENV === 'production' || !!process.env.NETLIFY;
+    if (isProd) return;
+
+    try {
+      const dir = path.dirname(this.dbFilePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+    } catch {
+      // Ignored for environments without write permission
     }
   }
 
   public loadFromDisk() {
+    const isProd = process.env.NODE_ENV === 'production' || !!process.env.NETLIFY;
+    if (isProd) return;
+
     if (!fs.existsSync(this.dbFilePath)) return;
     const raw = fs.readFileSync(this.dbFilePath, 'utf-8');
     const data = JSON.parse(raw);
@@ -1362,9 +1376,13 @@ export class DatabaseStore {
   }
 
   public async reconnectPostgres(dbUrl?: string): Promise<boolean> {
+    const isProd = process.env.NODE_ENV === 'production' || !!process.env.NETLIFY;
     if (dbUrl !== undefined) {
-      process.env.NETLIFY_DB_URL = dbUrl;
-      process.env.DATABASE_URL = dbUrl;
+      if (isProd) {
+        process.env.NETLIFY_DB_URL = dbUrl;
+      } else {
+        process.env.DATABASE_URL = dbUrl;
+      }
     }
     if (globalPostgresPool) {
       try {
