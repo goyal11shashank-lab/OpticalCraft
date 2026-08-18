@@ -1,8 +1,8 @@
 /**
- * OptiCraft Eyewear - Production Data Persistence & Relational DAL Layer (Phase 9A)
+ * OptiCraft Eyewear - Production Data Persistence & Relational DAL Layer
  * 
- * Replaces pure in-memory maps with a durable file-backed store and PostgreSQL adapter.
- * Guarantees data durability across process restarts, ACID inventory transactions, and payment idempotency.
+ * Production PostgreSQL database connectivity for Netlify Functions, Cloud Run, and Node environments.
+ * Ensures PostgreSQL is the persistent single source of truth in production without unrequested schema alterations.
  */
 
 import fs from 'fs';
@@ -34,13 +34,273 @@ import {
   OrderStatus,
 } from '../types.js';
 
-// Synchronous/Debounced Persistent Map Wrapper
+// Embedded fallback schema in case file-based asset is not bundled in serverless output
+const EMBEDDED_SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS users (
+  id VARCHAR(128) PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  phone VARCHAR(64) UNIQUE,
+  password_hash TEXT,
+  role VARCHAR(32) NOT NULL DEFAULT 'customer',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS admin_users (
+  id VARCHAR(128) PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  role VARCHAR(64) NOT NULL,
+  password_hash TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS addresses (
+  id VARCHAR(128) PRIMARY KEY,
+  user_id VARCHAR(128) REFERENCES users(id) ON DELETE CASCADE,
+  name VARCHAR(255) NOT NULL,
+  phone VARCHAR(64) NOT NULL,
+  house_flat VARCHAR(255) NOT NULL,
+  street_locality VARCHAR(255) NOT NULL,
+  landmark VARCHAR(255),
+  city VARCHAR(128) NOT NULL,
+  state VARCHAR(128) NOT NULL,
+  pin_code VARCHAR(32) NOT NULL,
+  is_default BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS products (
+  id VARCHAR(128) PRIMARY KEY,
+  sku VARCHAR(128) UNIQUE NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  brand VARCHAR(128) NOT NULL,
+  category VARCHAR(128) NOT NULL,
+  description TEXT,
+  price NUMERIC(10, 2) NOT NULL CHECK (price >= 0),
+  original_price NUMERIC(10, 2) NOT NULL CHECK (original_price >= 0),
+  discount_percentage NUMERIC(5, 2) DEFAULT 0,
+  stock INT NOT NULL CHECK (stock >= 0),
+  active BOOLEAN DEFAULT TRUE,
+  is_featured BOOLEAN DEFAULT FALSE,
+  images JSONB NOT NULL DEFAULT '[]'::jsonb,
+  frame_details JSONB NOT NULL DEFAULT '{}'::jsonb,
+  allowed_lens_type_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS lens_types (
+  id VARCHAR(128) PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  base_price NUMERIC(10, 2) NOT NULL CHECK (base_price >= 0),
+  requires_prescription BOOLEAN DEFAULT FALSE,
+  applicable_categories JSONB NOT NULL DEFAULT '[]'::jsonb,
+  active BOOLEAN DEFAULT TRUE
+);
+
+CREATE TABLE IF NOT EXISTS lens_materials (
+  id VARCHAR(128) PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  additional_price NUMERIC(10, 2) NOT NULL CHECK (additional_price >= 0),
+  index_rating VARCHAR(32) NOT NULL,
+  compatibility_lens_type_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+  active BOOLEAN DEFAULT TRUE
+);
+
+CREATE TABLE IF NOT EXISTS coatings (
+  id VARCHAR(128) PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  additional_price NUMERIC(10, 2) NOT NULL CHECK (additional_price >= 0),
+  is_blue_cut BOOLEAN DEFAULT FALSE,
+  compatibility_material_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+  active BOOLEAN DEFAULT TRUE
+);
+
+CREATE TABLE IF NOT EXISTS prescriptions (
+  id VARCHAR(128) PRIMARY KEY,
+  user_id VARCHAR(128) REFERENCES users(id) ON DELETE SET NULL,
+  title VARCHAR(255),
+  od_right JSONB NOT NULL,
+  os_left JSONB NOT NULL,
+  pd NUMERIC(4, 1) NOT NULL CHECK (pd >= 45 AND pd <= 75),
+  uploaded_file_path TEXT,
+  uploaded_file_type VARCHAR(32),
+  verification_status VARCHAR(64) NOT NULL DEFAULT 'Pending Verification',
+  verification_note TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS prescription_file_metadata (
+  id VARCHAR(128) PRIMARY KEY,
+  prescription_id VARCHAR(128) REFERENCES prescriptions(id) ON DELETE SET NULL,
+  customer_id VARCHAR(128) REFERENCES users(id) ON DELETE SET NULL,
+  order_id VARCHAR(128),
+  storage_key VARCHAR(255) UNIQUE NOT NULL,
+  filename VARCHAR(255) NOT NULL,
+  mime_type VARCHAR(128) NOT NULL,
+  size INT NOT NULL CHECK (size >= 0 AND size <= 10485760),
+  uploaded_by VARCHAR(128),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS carts (
+  id VARCHAR(128) PRIMARY KEY,
+  user_id VARCHAR(128),
+  items JSONB NOT NULL DEFAULT '[]'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS saved_for_later (
+  id VARCHAR(128) PRIMARY KEY,
+  items JSONB NOT NULL DEFAULT '[]'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS orders (
+  id VARCHAR(128) PRIMARY KEY,
+  order_number VARCHAR(128) UNIQUE NOT NULL,
+  user_id VARCHAR(128),
+  customer_name VARCHAR(255) NOT NULL,
+  customer_email VARCHAR(255) NOT NULL,
+  customer_phone VARCHAR(64) NOT NULL,
+  delivery_address JSONB NOT NULL,
+  items JSONB NOT NULL,
+  subtotal_amount NUMERIC(10, 2) NOT NULL CHECK (subtotal_amount >= 0),
+  discount_amount NUMERIC(10, 2) NOT NULL DEFAULT 0 CHECK (discount_amount >= 0),
+  delivery_fee NUMERIC(10, 2) NOT NULL DEFAULT 0 CHECK (delivery_fee = 0),
+  total_amount NUMERIC(10, 2) NOT NULL CHECK (total_amount >= 0),
+  status VARCHAR(64) NOT NULL DEFAULT 'Payment Pending',
+  prescription_verification_status VARCHAR(64) NOT NULL DEFAULT 'Not Required',
+  payment JSONB NOT NULL,
+  notes JSONB DEFAULT '[]'::jsonb,
+  shipment JSONB,
+  status_history JSONB DEFAULT '[]'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS payments (
+  id VARCHAR(128) PRIMARY KEY,
+  order_id VARCHAR(128) REFERENCES orders(id) ON DELETE CASCADE,
+  razorpay_order_id VARCHAR(128) UNIQUE,
+  razorpay_payment_id VARCHAR(128) UNIQUE,
+  razorpay_signature TEXT,
+  amount NUMERIC(10, 2) NOT NULL CHECK (amount >= 0),
+  currency VARCHAR(16) NOT NULL DEFAULT 'INR',
+  payment_method VARCHAR(64) NOT NULL,
+  status VARCHAR(64) NOT NULL DEFAULT 'Pending',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS inventory (
+  product_id VARCHAR(128) PRIMARY KEY REFERENCES products(id) ON DELETE CASCADE,
+  sku VARCHAR(128) UNIQUE NOT NULL,
+  stock_count INT NOT NULL CHECK (stock_count >= 0),
+  reserved_count INT NOT NULL DEFAULT 0 CHECK (reserved_count >= 0),
+  available_count INT NOT NULL CHECK (available_count >= 0),
+  low_stock_threshold INT NOT NULL DEFAULT 5 CHECK (low_stock_threshold >= 0),
+  status VARCHAR(32) NOT NULL DEFAULT 'In Stock',
+  last_updated TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS inventory_transactions (
+  id VARCHAR(128) PRIMARY KEY,
+  product_id VARCHAR(128) REFERENCES products(id) ON DELETE CASCADE,
+  sku VARCHAR(128) NOT NULL,
+  quantity_change INT NOT NULL,
+  type VARCHAR(32) NOT NULL,
+  reason TEXT NOT NULL,
+  performed_by VARCHAR(255) NOT NULL,
+  timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS shipments (
+  id VARCHAR(128) PRIMARY KEY,
+  order_id VARCHAR(128) UNIQUE REFERENCES orders(id) ON DELETE CASCADE,
+  courier_name VARCHAR(128) NOT NULL,
+  awb_number VARCHAR(128) UNIQUE NOT NULL,
+  tracking_url TEXT,
+  status VARCHAR(64) NOT NULL DEFAULT 'Created',
+  shipped_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  delivered_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS order_notes (
+  id VARCHAR(128) PRIMARY KEY,
+  order_id VARCHAR(128) REFERENCES orders(id) ON DELETE CASCADE,
+  author_name VARCHAR(255) NOT NULL,
+  author_role VARCHAR(128) NOT NULL,
+  note TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id VARCHAR(128) PRIMARY KEY,
+  admin_id VARCHAR(128) NOT NULL,
+  admin_name VARCHAR(255) NOT NULL,
+  admin_role VARCHAR(128) NOT NULL,
+  action VARCHAR(255) NOT NULL,
+  entity VARCHAR(128) NOT NULL,
+  entity_id VARCHAR(128) NOT NULL,
+  metadata JSONB,
+  timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS wishlists (
+  id VARCHAR(128) PRIMARY KEY,
+  user_id VARCHAR(128) REFERENCES users(id) ON DELETE CASCADE,
+  product_id VARCHAR(128) REFERENCES products(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, product_id)
+);
+
+CREATE TABLE IF NOT EXISTS cancellations (
+  id VARCHAR(128) PRIMARY KEY,
+  order_id VARCHAR(128) REFERENCES orders(id) ON DELETE CASCADE,
+  reason TEXT NOT NULL,
+  status VARCHAR(64) NOT NULL DEFAULT 'Requested',
+  requested_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS return_requests (
+  id VARCHAR(128) PRIMARY KEY,
+  order_id VARCHAR(128) REFERENCES orders(id) ON DELETE CASCADE,
+  reason TEXT NOT NULL,
+  status VARCHAR(64) NOT NULL DEFAULT 'Requested',
+  requested_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS notification_records (
+  id VARCHAR(128) PRIMARY KEY,
+  type VARCHAR(128) NOT NULL,
+  recipient_email VARCHAR(255),
+  recipient_phone VARCHAR(64),
+  payload JSONB NOT NULL,
+  sent_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+`;
+
+// Synchronous/Debounced Persistent Map Wrapper with Postgres Hook
 class PersistentMap<K, V> {
   private map: Map<K, V> = new Map();
-  private onMutate?: () => void;
+  private onMutate?: (key: K, value?: V, action?: 'set' | 'delete' | 'clear') => void;
   private isMutationAllowed?: () => boolean;
 
-  constructor(onMutate?: () => void, isMutationAllowed?: () => boolean) {
+  constructor(
+    onMutate?: (key: K, value?: V, action?: 'set' | 'delete' | 'clear') => void,
+    isMutationAllowed?: () => boolean
+  ) {
     this.onMutate = onMutate;
     this.isMutationAllowed = isMutationAllowed;
   }
@@ -54,7 +314,7 @@ class PersistentMap<K, V> {
       throw new Error('[DATA PERSISTENCE] PRODUCTION DATABASE FAILURE: Data mutation blocked because PostgreSQL database is unavailable.');
     }
     this.map.set(key, value);
-    if (this.onMutate) this.onMutate();
+    if (this.onMutate) this.onMutate(key, value, 'set');
     return this;
   }
 
@@ -67,7 +327,7 @@ class PersistentMap<K, V> {
       throw new Error('[DATA PERSISTENCE] PRODUCTION DATABASE FAILURE: Data mutation blocked because PostgreSQL database is unavailable.');
     }
     const deleted = this.map.delete(key);
-    if (deleted && this.onMutate) this.onMutate();
+    if (deleted && this.onMutate) this.onMutate(key, undefined, 'delete');
     return deleted;
   }
 
@@ -76,7 +336,7 @@ class PersistentMap<K, V> {
       throw new Error('[DATA PERSISTENCE] PRODUCTION DATABASE FAILURE: Data mutation blocked because PostgreSQL database is unavailable.');
     }
     this.map.clear();
-    if (this.onMutate) this.onMutate();
+    if (this.onMutate) this.onMutate('' as any, undefined, 'clear');
   }
 
   keys(): IterableIterator<K> {
@@ -109,11 +369,15 @@ class PersistentMap<K, V> {
   }
 }
 
+// Module-level connection pool singleton for serverless connection reuse
+let globalPostgresPool: pg.Pool | null = null;
+
 export class DatabaseStore {
   private dbFilePath: string;
   private saveTimeout: NodeJS.Timeout | null = null;
   private pool: pg.Pool | null = null;
   private locks: Map<string, Promise<any>> = new Map();
+  private initializationPromise: Promise<boolean> | null = null;
 
   public isPostgresConnected: boolean = false;
   public postgresError: string | null = null;
@@ -144,34 +408,47 @@ export class DatabaseStore {
 
   constructor(customFilePath?: string) {
     this.dbFilePath = customFilePath || process.env.DB_FILE_PATH || path.join(process.cwd(), 'data', 'opticraft_db.json');
-    const triggerSave = () => this.scheduleSaveToDisk();
     const isMutationAllowed = () => this.isDatabaseAvailable();
 
-    this.users = new PersistentMap(triggerSave, isMutationAllowed);
-    this.addresses = new PersistentMap(triggerSave, isMutationAllowed);
-    this.products = new PersistentMap(triggerSave, isMutationAllowed);
-    this.lensTypes = new PersistentMap(triggerSave, isMutationAllowed);
-    this.lensMaterials = new PersistentMap(triggerSave, isMutationAllowed);
-    this.coatings = new PersistentMap(triggerSave, isMutationAllowed);
-    this.prescriptions = new PersistentMap(triggerSave, isMutationAllowed);
-    this.carts = new PersistentMap(triggerSave, isMutationAllowed);
-    this.savedForLater = new PersistentMap(triggerSave, isMutationAllowed);
-    this.orders = new PersistentMap(triggerSave, isMutationAllowed);
-    this.wishlists = new PersistentMap(triggerSave, isMutationAllowed);
-    this.inventory = new PersistentMap(triggerSave, isMutationAllowed);
-    this.adminUsers = new PersistentMap(triggerSave, isMutationAllowed);
-    this.orderNotes = new PersistentMap(triggerSave, isMutationAllowed);
-    this.shipments = new PersistentMap(triggerSave, isMutationAllowed);
-    this.inventoryLedger = new PersistentMap(triggerSave, isMutationAllowed);
-    this.auditLogs = new PersistentMap(triggerSave, isMutationAllowed);
-    this.cancellations = new PersistentMap(triggerSave, isMutationAllowed);
-    this.returnRequests = new PersistentMap(triggerSave, isMutationAllowed);
-    this.payments = new PersistentMap(triggerSave, isMutationAllowed);
-    this.notifications = new PersistentMap(triggerSave, isMutationAllowed);
-    this.prescriptionFiles = new PersistentMap(triggerSave, isMutationAllowed);
+    const makeMutateHook = (tableName: string, entityKeyField: string) => {
+      return (key: string, value?: any, action?: 'set' | 'delete' | 'clear') => {
+        this.scheduleSaveToDisk();
+        if (this.isPostgresConnected && this.pool) {
+          this.persistEntityToPostgres(tableName, entityKeyField, key, value, action).catch((err) => {
+            console.error(`[POSTGRES ASYNC SYNC ERROR - ${tableName}]:`, err.message || err);
+          });
+        }
+      };
+    };
 
-    this.initializeStore();
-    this.initializePostgresIfConfigured();
+    this.users = new PersistentMap(makeMutateHook('users', 'id'), isMutationAllowed);
+    this.addresses = new PersistentMap(makeMutateHook('addresses', 'id'), isMutationAllowed);
+    this.products = new PersistentMap(makeMutateHook('products', 'id'), isMutationAllowed);
+    this.lensTypes = new PersistentMap(makeMutateHook('lens_types', 'id'), isMutationAllowed);
+    this.lensMaterials = new PersistentMap(makeMutateHook('lens_materials', 'id'), isMutationAllowed);
+    this.coatings = new PersistentMap(makeMutateHook('coatings', 'id'), isMutationAllowed);
+    this.prescriptions = new PersistentMap(makeMutateHook('prescriptions', 'id'), isMutationAllowed);
+    this.carts = new PersistentMap(makeMutateHook('carts', 'id'), isMutationAllowed);
+    this.savedForLater = new PersistentMap(makeMutateHook('saved_for_later', 'id'), isMutationAllowed);
+    this.orders = new PersistentMap(makeMutateHook('orders', 'id'), isMutationAllowed);
+    this.wishlists = new PersistentMap(makeMutateHook('wishlists', 'id'), isMutationAllowed);
+    this.inventory = new PersistentMap(makeMutateHook('inventory', 'product_id'), isMutationAllowed);
+    this.adminUsers = new PersistentMap(makeMutateHook('admin_users', 'id'), isMutationAllowed);
+    this.orderNotes = new PersistentMap(makeMutateHook('order_notes', 'order_id'), isMutationAllowed);
+    this.shipments = new PersistentMap(makeMutateHook('shipments', 'id'), isMutationAllowed);
+    this.inventoryLedger = new PersistentMap(makeMutateHook('inventory_transactions', 'product_id'), isMutationAllowed);
+    this.auditLogs = new PersistentMap(makeMutateHook('audit_logs', 'id'), isMutationAllowed);
+    this.cancellations = new PersistentMap(makeMutateHook('cancellations', 'id'), isMutationAllowed);
+    this.returnRequests = new PersistentMap(makeMutateHook('return_requests', 'id'), isMutationAllowed);
+    this.payments = new PersistentMap(makeMutateHook('payments', 'id'), isMutationAllowed);
+    this.notifications = new PersistentMap(makeMutateHook('notification_records', 'id'), isMutationAllowed);
+    this.prescriptionFiles = new PersistentMap(makeMutateHook('prescription_file_metadata', 'id'), isMutationAllowed);
+
+    // Initial development store preload
+    const isProd = process.env.NODE_ENV === 'production' || !!process.env.NETLIFY;
+    if (!isProd) {
+      this.initializeStore();
+    }
   }
 
   public maskDbUrl(url?: string): string {
@@ -180,21 +457,81 @@ export class DatabaseStore {
   }
 
   public isDatabaseAvailable(): boolean {
-    if (process.env.NODE_ENV === 'production') {
+    const isProd = process.env.NODE_ENV === 'production' || !!process.env.NETLIFY;
+    if (isProd) {
       return this.isPostgresConnected;
     }
-    return true; // Development mode permits file-backed store fallback
+    return true; // Development mode allows fallback
   }
 
-  public getHealthStatus(): {
+  public async ensureInitialized(): Promise<boolean> {
+    if (this.initializationPromise) {
+      return this.initializationPromise;
+    }
+    this.initializationPromise = this.initializePostgresIfConfigured();
+    return this.initializationPromise;
+  }
+
+  public async checkDatabaseLiveConnection(): Promise<{
     healthy: boolean;
     isProduction: boolean;
     mode: 'POSTGRESQL' | 'DEVELOPMENT_FILE_FALLBACK' | 'PRODUCTION_DB_UNAVAILABLE';
     postgresConnected: boolean;
     maskedUrl?: string;
     error?: string;
-  } {
-    const isProd = process.env.NODE_ENV === 'production';
+  }> {
+    const isProd = process.env.NODE_ENV === 'production' || !!process.env.NETLIFY;
+    const maskedUrl = this.maskDbUrl(process.env.DATABASE_URL);
+
+    if (!this.pool || !this.isPostgresConnected) {
+      // Attempt connection initialization
+      await this.ensureInitialized();
+    }
+
+    if (this.pool && this.isPostgresConnected) {
+      try {
+        const client = await this.pool.connect();
+        try {
+          await client.query('SELECT 1');
+          return {
+            healthy: true,
+            isProduction: isProd,
+            mode: 'POSTGRESQL',
+            postgresConnected: true,
+            maskedUrl,
+          };
+        } finally {
+          client.release();
+        }
+      } catch (err: any) {
+        this.isPostgresConnected = false;
+        this.postgresError = err.message || 'Failed to ping PostgreSQL';
+      }
+    }
+
+    if (isProd) {
+      return {
+        healthy: false,
+        isProduction: true,
+        mode: 'PRODUCTION_DB_UNAVAILABLE',
+        postgresConnected: false,
+        maskedUrl,
+        error: this.postgresError || 'Production DATABASE_URL is not configured or PostgreSQL connection failed.',
+      };
+    } else {
+      return {
+        healthy: true,
+        isProduction: false,
+        mode: 'DEVELOPMENT_FILE_FALLBACK',
+        postgresConnected: false,
+        maskedUrl,
+        error: this.postgresError || undefined,
+      };
+    }
+  }
+
+  public getHealthStatus() {
+    const isProd = process.env.NODE_ENV === 'production' || !!process.env.NETLIFY;
     const maskedUrl = this.maskDbUrl(process.env.DATABASE_URL);
 
     if (isProd) {
@@ -202,7 +539,7 @@ export class DatabaseStore {
         return {
           healthy: true,
           isProduction: true,
-          mode: 'POSTGRESQL',
+          mode: 'POSTGRESQL' as const,
           postgresConnected: true,
           maskedUrl,
         };
@@ -210,36 +547,27 @@ export class DatabaseStore {
         return {
           healthy: false,
           isProduction: true,
-          mode: 'PRODUCTION_DB_UNAVAILABLE',
+          mode: 'PRODUCTION_DB_UNAVAILABLE' as const,
           postgresConnected: false,
           maskedUrl,
-          error: this.postgresError || 'PRODUCTION DATABASE FAILURE: PostgreSQL connection failed in production mode.',
+          error: this.postgresError || 'Production DATABASE_URL is not configured.',
         };
       }
     } else {
-      if (this.isPostgresConnected) {
-        return {
-          healthy: true,
-          isProduction: false,
-          mode: 'POSTGRESQL',
-          postgresConnected: true,
-          maskedUrl,
-        };
-      } else {
-        return {
-          healthy: true,
-          isProduction: false,
-          mode: 'DEVELOPMENT_FILE_FALLBACK',
-          postgresConnected: false,
-          maskedUrl,
-          error: this.postgresError || undefined,
-        };
-      }
+      return {
+        healthy: true,
+        isProduction: false,
+        mode: (this.isPostgresConnected ? 'POSTGRESQL' : 'DEVELOPMENT_FILE_FALLBACK') as 'POSTGRESQL' | 'DEVELOPMENT_FILE_FALLBACK',
+        postgresConnected: this.isPostgresConnected,
+        maskedUrl,
+        error: this.postgresError || undefined,
+      };
     }
   }
 
   public scheduleSaveToDisk() {
-    if (process.env.NODE_ENV === 'production') {
+    const isProd = process.env.NODE_ENV === 'production' || !!process.env.NETLIFY;
+    if (isProd) {
       // Production mode MUST NEVER persist data to development JSON file store
       return;
     }
@@ -250,10 +578,8 @@ export class DatabaseStore {
   }
 
   public saveToDiskSync() {
-    if (process.env.NODE_ENV === 'production') {
-      // Production mode MUST NEVER persist data to development JSON file store
-      return;
-    }
+    const isProd = process.env.NODE_ENV === 'production' || !!process.env.NETLIFY;
+    if (isProd) return;
     try {
       this.ensureDataDir();
       const exportData = this.exportDatabaseState();
@@ -290,7 +616,6 @@ export class DatabaseStore {
     if (!fs.existsSync(this.dbFilePath)) return;
     const raw = fs.readFileSync(this.dbFilePath, 'utf-8');
     const data = JSON.parse(raw);
-
     this.importDatabaseState(data);
   }
 
@@ -350,74 +675,70 @@ export class DatabaseStore {
 
   public async initializePostgresIfConfigured(): Promise<boolean> {
     const dbUrl = process.env.DATABASE_URL;
-    const isProd = process.env.NODE_ENV === 'production';
+    const isProd = process.env.NODE_ENV === 'production' || !!process.env.NETLIFY;
 
-    if (!dbUrl || dbUrl.includes('localhost:5432') || dbUrl.includes('opticraft_user')) {
+    if (!dbUrl) {
       if (isProd) {
         this.isPostgresConnected = false;
-        this.postgresError = 'PRODUCTION DATABASE FAILURE: DATABASE_URL is missing or unconfigured placeholder in production mode.';
-        console.error('[DATA PERSISTENCE] PRODUCTION DATABASE FAILURE: DATABASE_URL is missing or unconfigured in production mode.');
+        this.postgresError = 'Production DATABASE_URL environment variable is not configured.';
+        console.error('[DATA PERSISTENCE] PRODUCTION DATABASE FAILURE: Production DATABASE_URL is not configured.');
         return false;
       } else {
         this.isPostgresConnected = false;
         this.postgresError = null;
-        console.log('[DATA PERSISTENCE] DEVELOPMENT FALLBACK: PostgreSQL unavailable. Using development file-backed store.');
-        return false;
-      }
-    }
-
-    // Detect Railway internal private network hostnames (.railway.internal)
-    const isRailwayInternal = dbUrl.includes('.railway.internal') || dbUrl.includes('.internal');
-    if (isRailwayInternal && !process.env.RAILWAY_ENVIRONMENT) {
-      const guidance = 'Railway private hostname (*.railway.internal) detected outside Railway network. For external environments (like AI Studio / Local), use Railway Public TCP Proxy URL (e.g. junction.proxy.rlwy.net:PORT from Railway -> Postgres -> Settings -> Public Networking).';
-      if (isProd) {
-        this.isPostgresConnected = false;
-        this.postgresError = `PRODUCTION DATABASE FAILURE: ${guidance}`;
-        console.error(`[DATA PERSISTENCE] ${guidance}`);
-        return false;
-      } else {
-        this.isPostgresConnected = false;
-        this.postgresError = guidance;
-        console.log(`[DATA PERSISTENCE] DEVELOPMENT NOTE: ${guidance} Operating smoothly on local file-backed store.`);
+        console.log('[DATA PERSISTENCE] DEVELOPMENT FALLBACK: DATABASE_URL not set. Using development file-backed store.');
         return false;
       }
     }
 
     try {
-      if (this.pool) {
-        await this.pool.end().catch(() => {});
-        this.pool = null;
+      if (!globalPostgresPool) {
+        const isLocal = dbUrl.includes('localhost') || dbUrl.includes('127.0.0.1');
+        const isSslDisabled = dbUrl.includes('sslmode=disable');
+        const requiresSsl = !isLocal && !isSslDisabled;
+
+        globalPostgresPool = new pg.Pool({
+          connectionString: dbUrl,
+          max: 10,
+          idleTimeoutMillis: 30000,
+          connectionTimeoutMillis: 10000,
+          ssl: requiresSsl ? { rejectUnauthorized: false } : undefined,
+        });
+
+        globalPostgresPool.on('error', (err) => {
+          console.warn('[POSTGRES POOL WARNING]', err.message || err);
+        });
       }
 
-      // Check if SSL is needed (common for Railway, Supabase, Neon, Render, AWS RDS)
-      const requiresSsl = !dbUrl.includes('localhost') && 
-                          !dbUrl.includes('127.0.0.1') && 
-                          (dbUrl.includes('sslmode=') || 
-                           dbUrl.includes('rlwy.net') || 
-                           dbUrl.includes('railway.app') || 
-                           dbUrl.includes('supabase.co') || 
-                           dbUrl.includes('neon.tech') || 
-                           dbUrl.includes('render.com') || 
-                           dbUrl.includes('aivencloud.com'));
-
-      this.pool = new pg.Pool({
-        connectionString: dbUrl,
-        max: 10,
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 5000,
-        ssl: requiresSsl ? { rejectUnauthorized: false } : undefined,
-      });
-
-      this.pool.on('error', (err) => {
-        console.warn('[POSTGRES POOL WARNING]', err.message || err);
-      });
+      this.pool = globalPostgresPool;
 
       const client = await this.pool.connect();
       try {
-        const schemaPath = path.join(process.cwd(), 'src', 'server', 'db', 'schema.sql');
-        if (fs.existsSync(schemaPath)) {
-          const sql = fs.readFileSync(schemaPath, 'utf-8');
-          await client.query(sql);
+        // Run schema definition safely (CREATE TABLE IF NOT EXISTS)
+        let sql = EMBEDDED_SCHEMA_SQL;
+        try {
+          const schemaPath = path.join(process.cwd(), 'src', 'server', 'db', 'schema.sql');
+          if (fs.existsSync(schemaPath)) {
+            sql = fs.readFileSync(schemaPath, 'utf-8');
+          }
+        } catch {
+          // Fallback to embedded schema
+        }
+        await client.query(sql);
+
+        // Check if database has products already
+        const countRes = await client.query('SELECT COUNT(*) FROM products');
+        const prodCount = parseInt(countRes.rows[0].count, 10);
+
+        if (prodCount > 0) {
+          // Existing database! Hydrate in-memory state from PostgreSQL rows
+          await this.loadDataFromPostgres(client);
+          console.log(`[DATA PERSISTENCE] Hydrated data from existing PostgreSQL database (${prodCount} products found).`);
+        } else {
+          // Fresh database: seed initial catalog data and persist to PostgreSQL
+          this.seedInitialData();
+          await this.persistInitialDataToPostgres(client);
+          console.log('[DATA PERSISTENCE] Seeded fresh PostgreSQL database with initial catalog records.');
         }
       } finally {
         client.release();
@@ -436,12 +757,485 @@ export class DatabaseStore {
       } else {
         console.log(`[DATA PERSISTENCE] DEVELOPMENT FALLBACK: PostgreSQL connection failed (${err.message || err}). Using development file-backed store.`);
       }
-
-      if (this.pool) {
-        await this.pool.end().catch(() => {});
-        this.pool = null;
-      }
       return false;
+    }
+  }
+
+  // Load existing records from PostgreSQL into memory collections
+  private async loadDataFromPostgres(client: pg.PoolClient) {
+    try {
+      // Products
+      const prodRes = await client.query('SELECT * FROM products');
+      prodRes.rows.forEach((r: any) => {
+        const prod: Product = {
+          id: r.id,
+          sku: r.sku,
+          name: r.name,
+          brand: r.brand,
+          category: r.category,
+          description: r.description || '',
+          price: parseFloat(r.price),
+          originalPrice: parseFloat(r.original_price),
+          discountPercentage: parseFloat(r.discount_percentage || 0),
+          stock: parseInt(r.stock, 10),
+          active: Boolean(r.active),
+          isFeatured: Boolean(r.is_featured),
+          images: r.images || [],
+          frame: r.frame_details || {},
+          allowedLensTypeIds: r.allowed_lens_type_ids || [],
+          createdAt: r.created_at?.toISOString?.() || r.created_at,
+          updatedAt: r.updated_at?.toISOString?.() || r.updated_at,
+        };
+        this.products.internalSet(prod.id, prod);
+      });
+
+      // Lens Types
+      const ltRes = await client.query('SELECT * FROM lens_types');
+      ltRes.rows.forEach((r: any) => {
+        const lt: LensType = {
+          id: r.id,
+          name: r.name,
+          description: r.description || '',
+          basePrice: parseFloat(r.base_price),
+          requiresPrescription: Boolean(r.requires_prescription),
+          applicableCategories: r.applicable_categories || [],
+          active: Boolean(r.active),
+        };
+        this.lensTypes.internalSet(lt.id, lt);
+      });
+
+      // Lens Materials
+      const lmRes = await client.query('SELECT * FROM lens_materials');
+      lmRes.rows.forEach((r: any) => {
+        const lm: LensMaterial = {
+          id: r.id,
+          name: r.name,
+          description: r.description || '',
+          additionalPrice: parseFloat(r.additional_price),
+          indexRating: r.index_rating,
+          compatibilityLensTypeIds: r.compatibility_lens_type_ids || [],
+          active: Boolean(r.active),
+        };
+        this.lensMaterials.internalSet(lm.id, lm);
+      });
+
+      // Coatings
+      const coatRes = await client.query('SELECT * FROM coatings');
+      coatRes.rows.forEach((r: any) => {
+        const coat: Coating = {
+          id: r.id,
+          name: r.name,
+          description: r.description || '',
+          additionalPrice: parseFloat(r.additional_price),
+          isBlueCut: Boolean(r.is_blue_cut),
+          compatibilityMaterialIds: r.compatibility_material_ids || [],
+          active: Boolean(r.active),
+        };
+        this.coatings.internalSet(coat.id, coat);
+      });
+
+      // Users
+      const userRes = await client.query('SELECT * FROM users');
+      userRes.rows.forEach((r: any) => {
+        const u: User = {
+          id: r.id,
+          name: r.name,
+          email: r.email,
+          phone: r.phone,
+          passwordHash: r.password_hash,
+          role: r.role,
+          createdAt: r.created_at?.toISOString?.() || r.created_at,
+          updatedAt: r.updated_at?.toISOString?.() || r.updated_at,
+        };
+        this.users.internalSet(u.id, u);
+      });
+
+      // Admin Users
+      const adminRes = await client.query('SELECT * FROM admin_users');
+      adminRes.rows.forEach((r: any) => {
+        this.adminUsers.internalSet(r.id, {
+          id: r.id,
+          name: r.name,
+          email: r.email,
+          role: r.role,
+          passwordHash: r.password_hash,
+          createdAt: r.created_at?.toISOString?.() || r.created_at,
+          updatedAt: r.updated_at?.toISOString?.() || r.updated_at,
+        });
+      });
+
+      // Addresses
+      const addrRes = await client.query('SELECT * FROM addresses');
+      addrRes.rows.forEach((r: any) => {
+        const addr: Address = {
+          id: r.id,
+          userId: r.user_id,
+          name: r.name,
+          phone: r.phone,
+          houseFlat: r.house_flat,
+          streetLocality: r.street_locality,
+          landmark: r.landmark,
+          city: r.city,
+          state: r.state,
+          pinCode: r.pin_code,
+          isDefault: Boolean(r.is_default),
+        };
+        this.addresses.internalSet(addr.id, addr);
+      });
+
+      // Prescriptions
+      const rxRes = await client.query('SELECT * FROM prescriptions');
+      rxRes.rows.forEach((r: any) => {
+        const rx: Prescription = {
+          id: r.id,
+          userId: r.user_id,
+          title: r.title,
+          odRight: r.od_right,
+          osLeft: r.os_left,
+          pd: parseFloat(r.pd),
+          uploadedFilePath: r.uploaded_file_path,
+          uploadedFileType: r.uploaded_file_type,
+          verificationStatus: r.verification_status,
+          verificationNote: r.verification_note,
+          createdAt: r.created_at?.toISOString?.() || r.created_at,
+          updatedAt: r.updated_at?.toISOString?.() || r.updated_at,
+        };
+        this.prescriptions.internalSet(rx.id, rx);
+      });
+
+      // Inventory
+      const invRes = await client.query('SELECT * FROM inventory');
+      invRes.rows.forEach((r: any) => {
+        const inv: InventoryRecord = {
+          productId: r.product_id,
+          sku: r.sku,
+          stockCount: parseInt(r.stock_count, 10),
+          reservedCount: parseInt(r.reserved_count || 0, 10),
+          availableCount: parseInt(r.available_count, 10),
+          lowStockThreshold: parseInt(r.low_stock_threshold || 5, 10),
+          status: r.status,
+          lastUpdated: r.last_updated?.toISOString?.() || r.last_updated,
+        };
+        this.inventory.internalSet(inv.productId, inv);
+      });
+
+      // Orders
+      const orderRes = await client.query('SELECT * FROM orders');
+      orderRes.rows.forEach((r: any) => {
+        const ord: Order = {
+          id: r.id,
+          orderNumber: r.order_number,
+          userId: r.user_id,
+          customerName: r.customer_name,
+          customerEmail: r.customer_email,
+          customerPhone: r.customer_phone,
+          deliveryAddress: r.delivery_address,
+          items: r.items,
+          subtotalAmount: parseFloat(r.subtotal_amount),
+          discountAmount: parseFloat(r.discount_amount || 0),
+          deliveryFee: 0,
+          totalAmount: parseFloat(r.total_amount),
+          status: r.status,
+          prescriptionVerificationStatus: r.prescription_verification_status,
+          payment: r.payment,
+          notes: r.notes || [],
+          shipment: r.shipment,
+          statusHistory: r.status_history || [],
+          createdAt: r.created_at?.toISOString?.() || r.created_at,
+          updatedAt: r.updated_at?.toISOString?.() || r.updated_at,
+        };
+        this.orders.internalSet(ord.id, ord);
+      });
+
+      // Carts
+      const cartRes = await client.query('SELECT * FROM carts');
+      cartRes.rows.forEach((r: any) => {
+        this.carts.internalSet(r.id, {
+          id: r.id,
+          userId: r.user_id,
+          items: r.items || [],
+          updatedAt: r.updated_at?.toISOString?.() || r.updated_at,
+        });
+      });
+
+      // Saved for Later
+      const savedRes = await client.query('SELECT * FROM saved_for_later');
+      savedRes.rows.forEach((r: any) => {
+        this.savedForLater.internalSet(r.id, r.items || []);
+      });
+
+      // Wishlists
+      const wishRes = await client.query('SELECT user_id, product_id FROM wishlists');
+      wishRes.rows.forEach((r: any) => {
+        let set = this.wishlists.get(r.user_id);
+        if (!set) {
+          set = new Set();
+          this.wishlists.internalSet(r.user_id, set);
+        }
+        set.add(r.product_id);
+      });
+    } catch (err) {
+      console.error('[DATA PERSISTENCE] Warning loading records from PostgreSQL:', err);
+    }
+  }
+
+  // Persist fresh initial seed data to PostgreSQL
+  private async persistInitialDataToPostgres(client: pg.PoolClient) {
+    try {
+      // Seed Lens Types
+      for (const lt of this.lensTypes.values()) {
+        await client.query(
+          `INSERT INTO lens_types (id, name, description, base_price, requires_prescription, applicable_categories, active)
+           VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO NOTHING`,
+          [lt.id, lt.name, lt.description, lt.basePrice, lt.requiresPrescription, JSON.stringify(lt.applicableCategories), lt.active]
+        );
+      }
+
+      // Seed Materials
+      for (const lm of this.lensMaterials.values()) {
+        await client.query(
+          `INSERT INTO lens_materials (id, name, description, additional_price, index_rating, compatibility_lens_type_ids, active)
+           VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO NOTHING`,
+          [lm.id, lm.name, lm.description, lm.additionalPrice, lm.indexRating, JSON.stringify(lm.compatibilityLensTypeIds), lm.active]
+        );
+      }
+
+      // Seed Coatings
+      for (const coat of this.coatings.values()) {
+        await client.query(
+          `INSERT INTO coatings (id, name, description, additional_price, is_blue_cut, compatibility_material_ids, active)
+           VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO NOTHING`,
+          [coat.id, coat.name, coat.description, coat.additionalPrice, coat.isBlueCut, JSON.stringify(coat.compatibilityMaterialIds), coat.active]
+        );
+      }
+
+      // Seed Products & Inventory
+      for (const p of this.products.values()) {
+        await client.query(
+          `INSERT INTO products (id, sku, name, brand, category, description, price, original_price, discount_percentage, stock, active, is_featured, images, frame_details, allowed_lens_type_ids)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) ON CONFLICT (id) DO NOTHING`,
+          [
+            p.id,
+            p.sku,
+            p.name,
+            p.brand,
+            p.category,
+            p.description,
+            p.price,
+            p.originalPrice,
+            p.discountPercentage,
+            p.stock,
+            p.active,
+            p.isFeatured,
+            JSON.stringify(p.images),
+            JSON.stringify(p.frame),
+            JSON.stringify(p.allowedLensTypeIds),
+          ]
+        );
+
+        const inv = this.inventory.get(p.id);
+        if (inv) {
+          await client.query(
+            `INSERT INTO inventory (product_id, sku, stock_count, reserved_count, available_count, low_stock_threshold, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (product_id) DO NOTHING`,
+            [inv.productId, inv.sku, inv.stockCount, inv.reservedCount, inv.availableCount, inv.lowStockThreshold, inv.status]
+          );
+        }
+      }
+
+      // Seed Admin Users
+      for (const adm of this.adminUsers.values()) {
+        await client.query(
+          `INSERT INTO admin_users (id, name, email, role, password_hash)
+           VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING`,
+          [adm.id, adm.name, adm.email, adm.role, adm.passwordHash]
+        );
+      }
+
+      // Seed Users
+      for (const u of this.users.values()) {
+        await client.query(
+          `INSERT INTO users (id, name, email, phone, password_hash, role)
+           VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO NOTHING`,
+          [u.id, u.name, u.email, u.phone, u.passwordHash, u.role]
+        );
+      }
+    } catch (err) {
+      console.error('[DATA PERSISTENCE] Error persisting initial seeds to PostgreSQL:', err);
+    }
+  }
+
+  // Persist live entity modifications to PostgreSQL
+  private async persistEntityToPostgres(
+    tableName: string,
+    keyField: string,
+    key: string,
+    value: any,
+    action?: 'set' | 'delete' | 'clear'
+  ) {
+    if (!this.pool || !this.isPostgresConnected) return;
+
+    if (action === 'delete') {
+      await this.pool.query(`DELETE FROM ${tableName} WHERE ${keyField} = $1`, [key]);
+      return;
+    }
+
+    if (action === 'clear') {
+      await this.pool.query(`DELETE FROM ${tableName}`);
+      return;
+    }
+
+    // Handle table-specific upsert operations
+    try {
+      if (tableName === 'products' && value) {
+        await this.pool.query(
+          `INSERT INTO products (id, sku, name, brand, category, description, price, original_price, discount_percentage, stock, active, is_featured, images, frame_details, allowed_lens_type_ids, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, CURRENT_TIMESTAMP)
+           ON CONFLICT (id) DO UPDATE SET
+             sku = EXCLUDED.sku, name = EXCLUDED.name, brand = EXCLUDED.brand, category = EXCLUDED.category,
+             description = EXCLUDED.description, price = EXCLUDED.price, original_price = EXCLUDED.original_price,
+             discount_percentage = EXCLUDED.discount_percentage, stock = EXCLUDED.stock, active = EXCLUDED.active,
+             is_featured = EXCLUDED.is_featured, images = EXCLUDED.images, frame_details = EXCLUDED.frame_details,
+             allowed_lens_type_ids = EXCLUDED.allowed_lens_type_ids, updated_at = CURRENT_TIMESTAMP`,
+          [
+            value.id,
+            value.sku,
+            value.name,
+            value.brand,
+            value.category,
+            value.description,
+            value.price,
+            value.originalPrice,
+            value.discountPercentage,
+            value.stock,
+            value.active,
+            value.isFeatured,
+            JSON.stringify(value.images || []),
+            JSON.stringify(value.frame || {}),
+            JSON.stringify(value.allowedLensTypeIds || []),
+          ]
+        );
+      } else if (tableName === 'inventory' && value) {
+        await this.pool.query(
+          `INSERT INTO inventory (product_id, sku, stock_count, reserved_count, available_count, low_stock_threshold, status, last_updated)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
+           ON CONFLICT (product_id) DO UPDATE SET
+             sku = EXCLUDED.sku, stock_count = EXCLUDED.stock_count, reserved_count = EXCLUDED.reserved_count,
+             available_count = EXCLUDED.available_count, low_stock_threshold = EXCLUDED.low_stock_threshold,
+             status = EXCLUDED.status, last_updated = CURRENT_TIMESTAMP`,
+          [value.productId, value.sku, value.stockCount, value.reservedCount || 0, value.availableCount, value.lowStockThreshold || 5, value.status]
+        );
+      } else if (tableName === 'orders' && value) {
+        await this.pool.query(
+          `INSERT INTO orders (id, order_number, user_id, customer_name, customer_email, customer_phone, delivery_address, items, subtotal_amount, discount_amount, delivery_fee, total_amount, status, prescription_verification_status, payment, notes, shipment, status_history, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, CURRENT_TIMESTAMP)
+           ON CONFLICT (id) DO UPDATE SET
+             status = EXCLUDED.status, prescription_verification_status = EXCLUDED.prescription_verification_status,
+             payment = EXCLUDED.payment, notes = EXCLUDED.notes, shipment = EXCLUDED.shipment,
+             status_history = EXCLUDED.status_history, updated_at = CURRENT_TIMESTAMP`,
+          [
+            value.id,
+            value.orderNumber,
+            value.userId || null,
+            value.customerName,
+            value.customerEmail,
+            value.customerPhone,
+            JSON.stringify(value.deliveryAddress),
+            JSON.stringify(value.items),
+            value.subtotalAmount,
+            value.discountAmount || 0,
+            value.deliveryFee || 0,
+            value.totalAmount,
+            value.status,
+            value.prescriptionVerificationStatus || 'Not Required',
+            JSON.stringify(value.payment),
+            JSON.stringify(value.notes || []),
+            value.shipment ? JSON.stringify(value.shipment) : null,
+            JSON.stringify(value.statusHistory || []),
+          ]
+        );
+      } else if (tableName === 'carts' && value) {
+        await this.pool.query(
+          `INSERT INTO carts (id, user_id, items, updated_at)
+           VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+           ON CONFLICT (id) DO UPDATE SET
+             user_id = EXCLUDED.user_id, items = EXCLUDED.items, updated_at = CURRENT_TIMESTAMP`,
+          [value.id, value.userId || null, JSON.stringify(value.items || [])]
+        );
+      } else if (tableName === 'saved_for_later') {
+        await this.pool.query(
+          `INSERT INTO saved_for_later (id, items, updated_at)
+           VALUES ($1, $2, CURRENT_TIMESTAMP)
+           ON CONFLICT (id) DO UPDATE SET
+             items = EXCLUDED.items, updated_at = CURRENT_TIMESTAMP`,
+          [key, JSON.stringify(value || [])]
+        );
+      } else if (tableName === 'users' && value) {
+        await this.pool.query(
+          `INSERT INTO users (id, name, email, phone, password_hash, role, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+           ON CONFLICT (id) DO UPDATE SET
+             name = EXCLUDED.name, email = EXCLUDED.email, phone = EXCLUDED.phone,
+             password_hash = EXCLUDED.password_hash, role = EXCLUDED.role, updated_at = CURRENT_TIMESTAMP`,
+          [value.id, value.name, value.email, value.phone || null, value.passwordHash || null, value.role]
+        );
+      } else if (tableName === 'admin_users' && value) {
+        await this.pool.query(
+          `INSERT INTO admin_users (id, name, email, role, password_hash, updated_at)
+           VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+           ON CONFLICT (id) DO UPDATE SET
+             name = EXCLUDED.name, email = EXCLUDED.email, role = EXCLUDED.role,
+             password_hash = EXCLUDED.password_hash, updated_at = CURRENT_TIMESTAMP`,
+          [value.id, value.name, value.email, value.role, value.passwordHash]
+        );
+      } else if (tableName === 'addresses' && value) {
+        await this.pool.query(
+          `INSERT INTO addresses (id, user_id, name, phone, house_flat, street_locality, landmark, city, state, pin_code, is_default, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_TIMESTAMP)
+           ON CONFLICT (id) DO UPDATE SET
+             name = EXCLUDED.name, phone = EXCLUDED.phone, house_flat = EXCLUDED.house_flat,
+             street_locality = EXCLUDED.street_locality, landmark = EXCLUDED.landmark,
+             city = EXCLUDED.city, state = EXCLUDED.state, pin_code = EXCLUDED.pin_code,
+             is_default = EXCLUDED.is_default, updated_at = CURRENT_TIMESTAMP`,
+          [
+            value.id,
+            value.userId || null,
+            value.name,
+            value.phone,
+            value.houseFlat,
+            value.streetLocality,
+            value.landmark || null,
+            value.city,
+            value.state,
+            value.pinCode,
+            value.isDefault || false,
+          ]
+        );
+      } else if (tableName === 'prescriptions' && value) {
+        await this.pool.query(
+          `INSERT INTO prescriptions (id, user_id, title, od_right, os_left, pd, uploaded_file_path, uploaded_file_type, verification_status, verification_note, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP)
+           ON CONFLICT (id) DO UPDATE SET
+             title = EXCLUDED.title, od_right = EXCLUDED.od_right, os_left = EXCLUDED.os_left,
+             pd = EXCLUDED.pd, uploaded_file_path = EXCLUDED.uploaded_file_path,
+             uploaded_file_type = EXCLUDED.uploaded_file_type, verification_status = EXCLUDED.verification_status,
+             verification_note = EXCLUDED.verification_note, updated_at = CURRENT_TIMESTAMP`,
+          [
+            value.id,
+            value.userId || null,
+            value.title || null,
+            JSON.stringify(value.odRight),
+            JSON.stringify(value.osLeft),
+            value.pd,
+            value.uploadedFilePath || null,
+            value.uploadedFileType || null,
+            value.verificationStatus || 'Pending Verification',
+            value.verificationNote || null,
+          ]
+        );
+      }
+    } catch (err: any) {
+      console.error(`[POSTGRES PERSISTENCE ERROR - ${tableName}]`, err.message || err);
     }
   }
 

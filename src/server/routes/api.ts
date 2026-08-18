@@ -116,11 +116,15 @@ router.use(authenticateToken);
 // ==========================================
 // 1. Health & System Verification
 // ==========================================
-router.get('/health', (_req: Request, res: Response) => {
-  const health = db.getHealthStatus();
+router.get('/health', async (_req: Request, res: Response) => {
+  const health = await db.checkDatabaseLiveConnection();
+  const isProd = process.env.NODE_ENV === 'production' || !!process.env.NETLIFY;
+
   if (health.healthy) {
     res.status(200).json({
       status: 'ok',
+      database: health.postgresConnected ? 'connected' : 'development_fallback',
+      environment: isProd ? 'production' : 'development',
       service: 'OptiCraft Eyewear API',
       timestamp: new Date().toISOString(),
       health,
@@ -128,12 +132,16 @@ router.get('/health', (_req: Request, res: Response) => {
   } else {
     res.status(503).json({
       status: 'error',
+      database: 'disconnected',
+      environment: isProd ? 'production' : 'development',
       service: 'OptiCraft Eyewear API',
       timestamp: new Date().toISOString(),
+      error: health.error || 'PostgreSQL database connection failed',
       health,
     });
   }
 });
+
 
 router.get('/phase1/verify', (_req: Request, res: Response) => {
   try {

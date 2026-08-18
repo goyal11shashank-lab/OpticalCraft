@@ -12,7 +12,7 @@
 import crypto from 'crypto';
 import { db } from './db.js';
 import { checkoutSessions, CheckoutSession } from './paymentService.js';
-import { Order, PaymentRecord } from '../types.js';
+import { Cart, Order, PaymentRecord } from '../types.js';
 
 // Environment variable retrieval
 export function getRazorpayConfig() {

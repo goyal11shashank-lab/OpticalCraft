@@ -3,7 +3,7 @@
  */
 
 import { db } from './db.js';
-import { Address, CartItem, Order, PaymentRecord, ProductConfiguration } from '../types.js';
+import { Address, Cart, CartItem, Order, PaymentRecord, ProductConfiguration } from '../types.js';
 
 export interface CheckoutCustomerInfo {
   name: string;
