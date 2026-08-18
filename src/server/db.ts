@@ -537,6 +537,9 @@ export class DatabaseStore {
     databaseName?: string;
     databaseUser?: string;
     databaseSchema?: string;
+    tables?: string[];
+    tableCount?: number;
+    tableCounts?: Record<string, number>;
     maskedUrl?: string;
     error?: string;
   }> {
@@ -555,6 +558,40 @@ export class DatabaseStore {
         try {
           const res = await client.query('SELECT current_database(), current_user, current_schema()');
           const row = res.rows[0] || {};
+
+          // Query actual live tables present in PostgreSQL public schema
+          const tableRes = await client.query(`
+            SELECT table_name 
+            FROM information_schema.tables 
+            WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+            ORDER BY table_name;
+          `);
+          const tables: string[] = tableRes.rows.map((r: any) => r.table_name);
+
+          // If tables are missing, apply idempotent schema
+          if (tables.length === 0) {
+            await client.query(EMBEDDED_SCHEMA_SQL);
+            
+            const recheckRes = await client.query(`
+              SELECT table_name 
+              FROM information_schema.tables 
+              WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+              ORDER BY table_name;
+            `);
+            tables.push(...recheckRes.rows.map((r: any) => r.table_name));
+          }
+
+          // Gather row counts for key tables
+          const tableCounts: Record<string, number> = {};
+          for (const tbl of tables) {
+            try {
+              const countRes = await client.query(`SELECT COUNT(*) FROM "${tbl}"`);
+              tableCounts[tbl] = parseInt(countRes.rows[0].count, 10);
+            } catch {
+              tableCounts[tbl] = 0;
+            }
+          }
+
           return {
             healthy: true,
             isProduction: isProd,
@@ -565,6 +602,9 @@ export class DatabaseStore {
             databaseName: row.current_database,
             databaseUser: row.current_user,
             databaseSchema: row.current_schema,
+            tables,
+            tableCount: tables.length,
+            tableCounts,
             maskedUrl,
           };
         } finally {
@@ -809,14 +849,11 @@ export class DatabaseStore {
         const prodCount = parseInt(countRes.rows[0].count, 10);
 
         if (prodCount > 0) {
-          // Existing database! Hydrate in-memory state from PostgreSQL rows
+          // Hydrate in-memory cache from PostgreSQL rows
           await this.loadDataFromPostgres(client);
-          console.log(`[DATA PERSISTENCE] Hydrated data from existing Netlify Database (${prodCount} products found, source: ${source}).`);
+          console.log(`[DATA PERSISTENCE] Loaded data from PostgreSQL (${prodCount} products found, source: ${source}).`);
         } else {
-          // Fresh database: seed initial catalog data and persist to PostgreSQL
-          this.seedInitialData();
-          await this.persistInitialDataToPostgres(client);
-          console.log(`[DATA PERSISTENCE] Seeded fresh Netlify Database with initial catalog records (source: ${source}).`);
+          console.log(`[DATA PERSISTENCE] PostgreSQL tables initialized and ready (0 products present, source: ${source}).`);
         }
       } finally {
         client.release();

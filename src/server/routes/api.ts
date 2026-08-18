@@ -142,6 +142,27 @@ router.get('/health', async (_req: Request, res: Response) => {
   }
 });
 
+router.get('/database/tables', async (_req: Request, res: Response) => {
+  try {
+    const health = await db.checkDatabaseLiveConnection();
+    res.status(200).json({
+      success: true,
+      postgresConnected: health.postgresConnected,
+      provider: health.provider,
+      databaseName: health.databaseName,
+      databaseSchema: health.databaseSchema,
+      tableCount: health.tableCount || 0,
+      tables: health.tables || [],
+      tableCounts: health.tableCounts || {},
+    });
+  } catch (err: any) {
+    res.status(500).json({
+      success: false,
+      error: err.message || 'Failed to inspect tables',
+    });
+  }
+});
+
 
 router.get('/phase1/verify', (_req: Request, res: Response) => {
   try {
